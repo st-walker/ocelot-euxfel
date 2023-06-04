@@ -1,3 +1,6 @@
+from pathlib import Path
+from importlib_resources import files
+
 from ocelot.utils.section_track import *
 from .lattice import i1
 from .lattice import i1d
@@ -19,6 +22,8 @@ from .lattice import t5
 
 from ocelot.cpbd.physics_proc import *
 
+from oxfel.fel_track import FELSection, MachineSequence
+
 #Sig_Z=(0.0019996320155001497, 0.0006893836215002082, 0.0001020391309281775, 1.25044082708419e-05) #500pC 5kA
 #Sig_Z=(0.0019996320155001497, 0.0006817907866411071, 9.947650872824487e-05, 7.13045869665955e-06)  #500pC 10kA
 #Sig_Z=(0.0018761888067590127, 0.0006359220169656093, 9.204477386791353e-05, 7.032551498646372e-06) #250pC 5kA
@@ -27,6 +32,8 @@ Sig_Z=(0.0018732376720197858, 0.000545866016784069, 7.09234589639138e-05, 2.4407
 #Sig_Z=(0.0013314283765668853, 0.0004502566926198658, 4.64037216210807e-05, 2.346018397815618e-06) #100 pC 5kA SC
 #Sig_Z=(0.0013314187263949542, 0.00045069372029991764, 4.537451914820527e-05, 4.0554988027793585e-06)#100 pC 2.5kA SC
 
+
+WAKES_PATH = files("oxfel.accelerator.wakes")
 
 SmoothPar=1000
 LHE=0*5000e-9  # GeV
@@ -38,15 +45,21 @@ SCmesh = [63, 63, 63]
 bISR=True
 bRandomMesh=True
 
-class A1(SectionTrack):
+class G1(FELSection):
+    def __init__(self, data_dir, *args, **kwargs):
+        super().__init__(data_dir)
+        self.lattice = MagneticLattice(i1.cell, stop=i1.start_sim)
+        self.sequence = MachineSequence(self.lattice.sequence)
+
+class A1(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
         self.lattice_name = 'A1'
         self.unit_step = 0.02
-        self.input_beam_file = self.particle_dir + 'Exfel.0320.ast'
-        self.output_beam_file = self.particle_dir + 'section_A1.npz'
-        self.tws_file = self.tws_dir + "tws_section_A1.npz"
+        self.input_beam_file = Path(self.particle_dir) / 'Exfel.0320.ast'
+        self.output_beam_file = Path(self.particle_dir) / 'section_A1.npz'
+        self.tws_file = Path(self.tws_dir) / "tws_section_A1.npz"
         # init tracking lattice
         start_sim = i1.start_sim
         acc1_stop = i1.a1_sim_stop
@@ -61,7 +74,7 @@ class A1(SectionTrack):
         sc2.nmesh_xyz = SCmesh
         sc2.random_mesh = bRandomMesh
         wake = Wake()
-        wake.wake_table = WakeTable('accelerator/wakes/RF/wake_table_A1.dat')
+        wake.wake_table = WakeTable(WAKES_PATH / 'RF/wake_table_A1.dat')
         wake.factor = 1
         wake.step = 10
         wake.w_sampling = WakeSampling
@@ -70,21 +83,23 @@ class A1(SectionTrack):
         smooth.mslice = SmoothPar
         # adding physics processes
         acc1_1_stop = i1.a1_1_stop
-        self.add_physics_process(smooth, start=start_sim, stop=start_sim)
-        self.add_physics_process(sc, start=start_sim, stop=acc1_1_stop)
-        self.add_physics_process(sc2, start=acc1_1_stop, stop=acc1_stop)
-        self.add_physics_process(wake, start=i1.c_a1_1_1_i1, stop=acc1_stop)
+        self.add_physics_process(smooth, start=start_sim.id, stop=start_sim.id)
+        self.add_physics_process(sc, start=start_sim.id, stop=acc1_1_stop.id)
+        self.add_physics_process(sc2, start=acc1_1_stop.id, stop=acc1_stop.id)
+        self.add_physics_process(wake, start=i1.c_a1_1_1_i1.id, stop=acc1_stop.id)
+
+        self.sequence = MachineSequence(self.lattice.sequence)
 
 
-class AH1(SectionTrack):
+class AH1(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
         self.lattice_name = 'Injector AH1'
         self.unit_step = 0.02
-        self.input_beam_file = self.particle_dir + 'section_A1.npz'
-        self.output_beam_file = self.particle_dir + 'section_AH1.npz'
-        self.tws_file = self.tws_dir + "tws_section_AH1.npz"
+        self.input_beam_file = self.particle_dir / 'section_A1.npz'
+        self.output_beam_file = self.particle_dir / 'section_AH1.npz'
+        self.tws_file = self.tws_dir / "tws_section_AH1.npz"
         # init tracking lattice
         acc1_stop = i1.a1_sim_stop
         acc39_stop = i1.stlat_47_i1
@@ -95,17 +110,18 @@ class AH1(SectionTrack):
         sc.nmesh_xyz = SCmesh
         sc.random_mesh = bRandomMesh
         wake = Wake()
-        wake.wake_table = WakeTable('accelerator/wakes/RF/wake_table_AH1.dat')
+        wake.wake_table = WakeTable(WAKES_PATH / 'RF/wake_table_AH1.dat')
         wake.factor = 1
         wake.step = 10
         wake.w_sampling = WakeSampling
         wake.filter_order = WakeFilterOrder
         # adding physics processes
-        self.add_physics_process(sc, start=acc1_stop, stop=acc39_stop)
-        self.add_physics_process(wake, start=i1.c3_ah1_1_1_i1, stop= acc39_stop)
+        self.add_physics_process(sc, start=acc1_stop.id, stop=acc39_stop.id)
+        self.add_physics_process(wake, start=i1.c3_ah1_1_1_i1.id, stop= acc39_stop.id)
 
+        self.sequence = MachineSequence(self.lattice.sequence)        
 
-class LH(SectionTrack):
+class LH(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -180,7 +196,7 @@ class LH(SectionTrack):
         self.add_physics_process(tr, i1.tmp_m, i1.tmp_m)
 
 
-class I1D_Screen(SectionTrack):
+class I1D_Screen(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -222,7 +238,7 @@ class I1D_Screen(SectionTrack):
 
 
 
-class DL(SectionTrack):
+class DL(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -257,7 +273,7 @@ class DL(SectionTrack):
         self.add_physics_process(wake_add, start=dogleg_stop, stop=dogleg_stop)
 
 
-class BC0(SectionTrack):
+class BC0(FELSection):
 
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
@@ -294,7 +310,7 @@ class BC0(SectionTrack):
         self.dipole_len = 0.5
         self.bc_gap=1.0
 
-class L1(SectionTrack):
+class L1(FELSection):
     
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
@@ -339,7 +355,7 @@ class L1(SectionTrack):
         self.add_physics_process(wake_add, start=L1_wake_kick, stop=L1_wake_kick)
 
 
-class BC1(SectionTrack):
+class BC1(FELSection):
 
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
@@ -377,7 +393,7 @@ class BC1(SectionTrack):
         self.bc_gap=8.5
 
 
-class L2(SectionTrack):
+class L2(FELSection):
 
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
@@ -416,7 +432,7 @@ class L2(SectionTrack):
         self.add_physics_process(wake_add, start=acc3t5_stop, stop=acc3t5_stop)
 
 
-class BC2(SectionTrack):
+class BC2(FELSection):
     
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
@@ -458,7 +474,7 @@ class BC2(SectionTrack):
         self.add_physics_process(sc, start=acc3t5_stop, stop=bc2_stop)
 
 
-class L3(SectionTrack):
+class L3(FELSection):
     
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
@@ -508,7 +524,7 @@ class L3(SectionTrack):
         self.add_physics_process(wake_add, start=acc6t26_stop, stop=acc6t26_stop)
 
 
-class CL1(SectionTrack):
+class CL1(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
 
@@ -568,7 +584,7 @@ class CL1(SectionTrack):
             sre8 = SpontanRadEffects(); sre8.radius = ro;  sre8.type = 'dipole';
             self.add_physics_process(sre8, cl.M1be_1741_cl, cl.M2be_1741_cl)
 
-class CL2(SectionTrack):
+class CL2(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
 
@@ -595,7 +611,7 @@ class CL2(SectionTrack):
         self.add_physics_process(sc, start=collimator1_stop, stop=collimator2_stop)
 
 
-class CL3(SectionTrack):
+class CL3(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
 
@@ -660,7 +676,7 @@ class CL3(SectionTrack):
             sre8 = SpontanRadEffects(); sre8.radius = ro;  sre8.type = 'dipole';
             self.add_physics_process(sre8, cl.M1be_1849_cl, cl.M2be_1849_cl)
 
-class STN10(SectionTrack):
+class STN10(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -692,7 +708,7 @@ class STN10(SectionTrack):
 
 
 
-class SASE1(SectionTrack):
+class SASE1(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -729,7 +745,7 @@ class SASE1(SectionTrack):
         self.add_physics_process(sre, start=stN10_stop, stop=sase1_stop)
 
 
-class T4(SectionTrack):
+class T4(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -804,7 +820,7 @@ class T4(SectionTrack):
 
 
 
-class SASE3(SectionTrack):
+class SASE3(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -830,7 +846,7 @@ class SASE3(SectionTrack):
         self.add_physics_process(sc, start=start, stop=stop)
 
 
-class T4D(SectionTrack):
+class T4D(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -863,7 +879,7 @@ class T4D(SectionTrack):
         self.add_physics_process(csr, start=t4d.tora_3065_t4d, stop=t4d.qk_3090_t4d)
 
 
-class T4_short(SectionTrack):
+class T4_short(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -946,7 +962,7 @@ class T4_short(SectionTrack):
 
 ################  SASE2 branch ####################################################
 
-class T1(SectionTrack):
+class T1(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
 
@@ -1054,7 +1070,7 @@ class T1(SectionTrack):
             sre18 = SpontanRadEffects(); sre18.radius = ro;  sre18.type = 'dipole';
             self.add_physics_process(sre18, t1.M1bz_2097_t1, t1.M2bz_2097_t1)
 
-class SASE2(SectionTrack):
+class SASE2(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -1089,7 +1105,7 @@ class SASE2(SectionTrack):
         self.add_physics_process(sc, start=sase2_start, stop=sase2_stop)
         #self.add_physics_process(sre, start=sase2_start, stop=sase2_stop)
 
-class T3(SectionTrack):
+class T3(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
@@ -1116,7 +1132,7 @@ class T3(SectionTrack):
             sre1 = SpontanRadEffects(); sre1.radius = ro;  sre1.type = 'dipole';
             self.add_physics_process(sre1, t3.M1be_2566_t3, t3.M2be_2566_t3)
 
-class T5(SectionTrack):
+class T5(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
         # setting parameters
