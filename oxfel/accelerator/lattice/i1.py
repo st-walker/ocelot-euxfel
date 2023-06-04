@@ -17,7 +17,7 @@ tws.beta_x = 55.79798872
 tws.beta_y = 60.52230841
 tws.alpha_x = 18.18856743
 tws.alpha_y = 19.71550368
-tws.s = 23.2
+tws.s = 0.
 
 
 # Drifts
