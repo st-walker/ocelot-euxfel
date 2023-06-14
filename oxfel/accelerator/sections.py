@@ -48,7 +48,7 @@ bRandomMesh=True
 class G1(FELSection):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(data_dir)
-        self.lattice = MagneticLattice(i1.cell, stop=i1.start_sim)
+        self.lattice = MagneticLattice(i1.cell, stop=i1.stop_astra)
         self.sequence = MachineSequence(self.lattice.sequence)
 
 class A1(FELSection):
@@ -101,9 +101,9 @@ class AH1(FELSection):
         self.output_beam_file = self.particle_dir / 'section_AH1.npz'
         self.tws_file = self.tws_dir / "tws_section_AH1.npz"
         # init tracking lattice
-        acc1_stop = i1.a1_sim_stop
+        ah1_start = i1.ah1_sim_start
         acc39_stop = i1.stlat_47_i1
-        self.lattice = MagneticLattice(i1.cell, start=acc1_stop, stop=acc39_stop, method=self.method)
+        self.lattice = MagneticLattice(i1.cell, start=ah1_start, stop=acc39_stop, method=self.method)
         # init physics processes
         sc = SpaceCharge()
         sc.step = 5
@@ -116,7 +116,7 @@ class AH1(FELSection):
         wake.w_sampling = WakeSampling
         wake.filter_order = WakeFilterOrder
         # adding physics processes
-        self.add_physics_process(sc, start=acc1_stop.id, stop=acc39_stop.id)
+        self.add_physics_process(sc, start=ah1_start.id, stop=acc39_stop.id)
         self.add_physics_process(wake, start=i1.c3_ah1_1_1_i1.id, stop= acc39_stop.id)
 
         self.sequence = MachineSequence(self.lattice.sequence)        
@@ -127,9 +127,9 @@ class LH(FELSection):
         # setting parameters
         self.lattice_name = 'LASER HEATER MAGNETS'
         self.unit_step = 0.02
-        self.input_beam_file = self.particle_dir + 'section_AH1.npz'
-        self.output_beam_file = self.particle_dir + 'section_LH.npz'
-        self.tws_file = self.tws_dir + "tws_section_LH.npz"
+        self.input_beam_file = self.particle_dir / 'section_AH1.npz'
+        self.output_beam_file = self.particle_dir / 'section_LH.npz'
+        self.tws_file = self.tws_dir / "tws_section_LH.npz"
         # init tracking lattice
         acc39_stop = i1.stlat_47_i1
         #lhm_stop = l1.id_90904668_ #for s2e
@@ -146,7 +146,7 @@ class LH(FELSection):
         sc.nmesh_xyz = SCmesh
         sc.random_mesh = bRandomMesh
         wake = Wake()
-        wake.wake_table = WakeTable('accelerator/wakes/RF/wake_table_TDS1.dat')
+        wake.wake_table = WakeTable(WAKES_PATH / 'RF/wake_table_TDS1.dat')
         wake.factor = 1
         wake.step = 10
         wake.w_sampling = WakeSampling
@@ -160,9 +160,9 @@ class LH(FELSection):
         lh.z_waist = None
 
 
-        filename_tds1 = self.particle_dir + "tds1.npz"
-        filename_tds2 = self.particle_dir + "tds2.npz"
-        filename_tds3 = self.particle_dir + "tds3.npz"
+        filename_tds1 = self.particle_dir / "tds1.npz"
+        filename_tds2 = self.particle_dir / "tds2.npz"
+        filename_tds3 = self.particle_dir / "tds3.npz"
         if "suffix" in kwargs:
             filename, file_extension = os.path.splitext(filename_tds1)
             filename_tds1 = filename + str(kwargs["suffix"]) + file_extension
@@ -187,13 +187,16 @@ class LH(FELSection):
         tr = BeamTransform(tws=tws_52)
         #tr.bounds = [-0.5, 0.5]
         tr.slice = "Emax"
-        self.add_physics_process(sc, start=acc39_stop, stop=lhm_stop)
-        self.add_physics_process(csr, start=acc39_stop, stop=lhm_stop)
-        self.add_physics_process(wake, start=acc39_stop, stop=lhm_stop)
-        self.add_physics_process(sv_tds1, start=i1.tds1, stop=i1.tds1)
+        self.add_physics_process(sc, start=acc39_stop.id, stop=lhm_stop.id)
+        self.add_physics_process(csr, start=acc39_stop.id, stop=lhm_stop.id)
+        self.add_physics_process(wake, start=acc39_stop.id, stop=lhm_stop.id)
+        self.add_physics_process(sv_tds1, start=i1.tds1.id, stop=i1.tds1.id)
         #self.add_physics_process(sv_tds2, start=i1.tds2, stop=i1.tds2)
         #self.add_physics_process(sv_tds3, start=i1.tds3, stop=i1.tds3)
-        self.add_physics_process(tr, i1.tmp_m, i1.tmp_m)
+        self.add_physics_process(tr, i1.tmp_m.id, i1.tmp_m.id)
+
+
+        self.sequence = MachineSequence(self.lattice.sequence)        
 
 
 class I1D_Screen(FELSection):
@@ -202,10 +205,10 @@ class I1D_Screen(FELSection):
         # setting parameters
         self.lattice_name = 'I1 DUMP'
         self.unit_step = 0.02
-        self.input_beam_file = self.particle_dir + 'section_LH.npz'
-        self.output_beam_file = self.particle_dir + 'section_I1D.npz'
-        self.tws_file = self.tws_dir + "tws_section_I1D.npz"
-        filename_dump = self.particle_dir + "dump.npz"
+        self.input_beam_file = self.particle_dir / 'section_LH.npz'
+        self.output_beam_file = self.particle_dir / 'section_I1D.npz'
+        self.tws_file = self.tws_dir / "tws_section_I1D.npz"
+        filename_dump = self.particle_dir / "dump.npz"
         if "suffix" in kwargs:
             filename, file_extension = os.path.splitext(self.output_beam_file)
             self.output_beam_file = filename + str(kwargs["suffix"]) + file_extension
@@ -219,7 +222,8 @@ class I1D_Screen(FELSection):
         i1d_start = i1.dump_csr_start
         i1d_stop = i1d.otrc_64_i1d
         #i1d_stop = i1d.stsec_62_i1d
-        self.lattice = MagneticLattice(i1.cell + i1d.cell, start=i1d_start, stop=i1d_stop, method=self.method)
+        # self.lattice = MagneticLattice(i1.cell + i1d.cell, start=i1d_start.id, stop=i1d_stop.id, method=self.method)
+        self.lattice = MagneticLattice(i1.cell + i1d.cell, start=i1d_start.id, method=self.method)
         # init physics processes
         sigma = Sig_Z[0]
         csr = CSR()
@@ -232,10 +236,11 @@ class I1D_Screen(FELSection):
         sc.nmesh_xyz = SCmesh
         sc.random_mesh = bRandomMesh
 
-        self.add_physics_process(sc, start=i1d_start, stop=i1d_stop)
-        self.add_physics_process(csr, start=i1d_start, stop=i1d.bpma_63_i1d)
-        self.add_physics_process(sv_dump, start=i1d_start, stop=i1d_start)
+        self.add_physics_process(sc, start=i1d_start.id, stop=i1d_stop.id)
+        self.add_physics_process(csr, start=i1d_start.id, stop=i1d.bpma_63_i1d.id)
+        self.add_physics_process(sv_dump, start=i1d_start.id, stop=i1d_start.id)
 
+        self.sequence = MachineSequence(self.lattice.sequence)        
 
 
 class DL(FELSection):

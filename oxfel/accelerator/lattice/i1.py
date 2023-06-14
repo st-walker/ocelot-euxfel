@@ -189,11 +189,13 @@ lh_start = Marker(eid="lh_start")
 lh_stop = Marker(eid="lh_stop")
 
 d_8_1 = Drift(l=0.5776, eid='D_12')
+stop_astra = Marker(eid="STOP_ASTRA")
 start_sim = Marker(eid="START_SIM")
 d_8_2 = Drift(l=d_8.l - d_8_1.l)
-d_8_n = (d_8_1, start_sim, d_8_2)
+d_8_n = (d_8_1, stop_astra, start_sim, d_8_2)
 qi_53_U = Marker("QI.53.U")
 a1_sim_stop = Marker(eid="a1_sim_stop")
+ah1_sim_start = Marker(eid="ah1_sim_start")
 tds1 = Marker(eid="TDS1")
 tds2 = Marker(eid="TDS2")
 tds3 = Marker(eid="TDS3")
@@ -213,7 +215,7 @@ cky_25_i1,
 d_8_n, 
 c_a1_1_1_i1, a1_1_stop, d_9, c_a1_1_2_i1, d_9, c_a1_1_3_i1, d_9, c_a1_1_4_i1, d_9,
 c_a1_1_5_i1, d_9, c_a1_1_6_i1, d_9, c_a1_1_7_i1, d_9, c_a1_1_8_i1, 
-a1_sim_stop, d_16, match_37_i1, d_17,
+        a1_sim_stop, ah1_sim_start, d_16, match_37_i1, d_17,
 q_37_i1, d_17, cx_37_i1, cy_37_i1, d_19, bpmc_38i_i1, d_20, bpmr_38ii_i1, d_21, q_38_i1, 
 d_17, cx_39_i1, cy_39_i1, d_23, c3_ah1_1_1_i1, d_24, c3_ah1_1_2_i1, d_24, c3_ah1_1_3_i1, d_24, 
 c3_ah1_1_4_i1, d_24, c3_ah1_1_5_i1, d_24, c3_ah1_1_6_i1, d_24, c3_ah1_1_7_i1, d_24, c3_ah1_1_8_i1, d_31, 
