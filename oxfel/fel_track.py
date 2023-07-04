@@ -49,7 +49,9 @@ class MachineSequence(Sequence):
         super().__init__(*args, **kwargs)
         self._sequence = list(flatten(sequence))
 
-    def __getitem__(self, key: ElementAccessType) -> Union[OpticElement, MachineSequence]:
+    def __getitem__(
+        self, key: ElementAccessType
+    ) -> Union[OpticElement, MachineSequence]:
         if isinstance(key, slice):
             start, step, stop = key.start, key.step, key.stop
             if step is not None:
@@ -94,12 +96,7 @@ class MachineSequence(Sequence):
 
         # If a name of an element find the index
         if isinstance(key, str):
-            try:
-                return self.names().index(key)
-            except:
-                import ipdb
-
-                ipdb.set_trace()
+            return self.names().index(key)
 
         # if an element instance then get the key
         try:
@@ -107,9 +104,6 @@ class MachineSequence(Sequence):
         except (TypeError, ValueError):
             pass
 
-        import ipdb
-
-        ipdb.set_trace()
         raise ValueError(f"Unable to normalise key: {key}")
 
     def __len__(self) -> int:
@@ -307,15 +301,15 @@ class SectionedFEL:
         return parray1
 
     def track_optics(
-            self,
-            parray0: ParticleArray,
-            start: ElementAccessType = None,
-            stop: ElementAccessType = None,
-            felconfig: Optional[FELSimulationConfig] = None,
-            dumps=None,
-            physics=False,
-            opticscls=None,
-            outdir: os.PathLike = None,
+        self,
+        parray0: ParticleArray,
+        start: ElementAccessType = None,
+        stop: ElementAccessType = None,
+        felconfig: Optional[FELSimulationConfig] = None,
+        dumps=None,
+        physics=False,
+        opticscls=None,
+        outdir: os.PathLike = None,
     ) -> tuple[ParticleArray, pd.DataFrame]:
         parray1, twiss = self._piecewise_matched_tracking(
             parray0,
@@ -339,16 +333,19 @@ class SectionedFEL:
         stop: ElementAccessType = None,
         outdir: os.PathLike = None,
         dumps=None,
-            physics=False,
+        physics=False,
         opticscls=None,
         felconfig: Optional[FELSimulationConfig] = None,
     ) -> tuple[ParticleArray, pd.DataFrame]:
         if outdir is None:
             outdir = Path(self.outdir)
 
-        navi = self.to_navigator(start=start, stop=stop, felconfig=felconfig, physics=physics)
+        navi = self.to_navigator(
+            start=start, stop=stop, felconfig=felconfig, physics=physics
+        )
         if calculate_optics:
             calc_procs = _add_markers_to_navi_for_optics(navi, opticscls)
+
         if dumps:
             _add_save_beams(navi, dumps, outdir)
 
@@ -375,7 +372,7 @@ class SectionedFEL:
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
         felconfig: Optional[FELSimulationConfig] = None,
-            physics: bool = True,
+        physics: bool = True,
         outdir: os.PathLike = None,
         opticscls=None,
         dumps=None,
@@ -409,7 +406,7 @@ class SectionedFEL:
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
         felconfig: Optional[FELSimulationConfig] = None,
-            physics: bool = True,
+        physics: bool = True,
     ) -> Navigator:
         if felconfig is None:
             felconfig = FELSimulationConfig()
@@ -473,12 +470,7 @@ class SectionedFEL:
                         process, proc_start_name, proc_stop_name, felconfig=felconfig
                     )
 
-                try:
-                    navi.add_physics_proc(process, proc_start, proc_stop)
-                except:
-                    import ipdb
-
-                    ipdb.set_trace()
+                navi.add_physics_proc(process, proc_start, proc_stop)
 
                 print(
                     f"From Section {type(section).__name__} - Adding {process}: start={proc_start_name}, stop={proc_stop_name}"
@@ -603,31 +595,47 @@ class SectionedFEL:
             s += element.l
         raise KeyError(f"{name} not found")
 
-    def match_beam(self, parray0: ParticleArray, *, 
-                   elements: list[str],
-                   constraints: dict[str: dict[str, float]],
-                   start: ElementAccessType = None,
-                   stop: ElementAccessType = None,
-                   felconfig: Optional[FELSimulationConfig] = None,
-                   **match_beam_kwargs) -> FELSimulationConfig:
-
+    def match_beam(
+        self,
+        parray0: ParticleArray,
+        *,
+        elements: list[str],
+        constraints: dict[str : dict[str, float]],
+        start: ElementAccessType = None,
+        stop: ElementAccessType = None,
+        felconfig: Optional[FELSimulationConfig] = None,
+        **match_beam_kwargs,
+    ) -> FELSimulationConfig:
         # Make navigator from given start, stop and felconfig
         navi = self.to_navigator(start=start, stop=stop, felconfig=felconfig)
 
         # Update match_beam_kwargs with function **kwargs.
-        match_beam_kwargs = {"verbose": True, "max_iter": 500, "method": "simplex", "min_i5": False,
-                             "bounds": None, "vary_bend_angle": False} | match_beam_kwargs
+        match_beam_kwargs = {
+            "verbose": True,
+            "max_iter": 500,
+            "method": "simplex",
+            "min_i5": False,
+            "bounds": None,
+            "vary_bend_angle": False,
+        } | match_beam_kwargs
 
         # Turn ElementAccessType into Element instances, if they are
         # not already, for elements and constraints arguments.
-        
+
         # Turn element names into element instances in the the Navigator
         elements = _get_element_instances_from_mlat(navi.lat, elements)
         # Magic one liner that takes element names as keys and turns them into Element instances
-        constraints = dict(zip(_get_element_instances_from_mlat(navi.lat, constraints.keys()), constraints.values()))
+        constraints = dict(
+            zip(
+                _get_element_instances_from_mlat(navi.lat, constraints.keys()),
+                constraints.values(),
+            )
+        )
         # Do the matching
 
-        res = match_beam(navi.lat, constraints, elements, parray0, navi, **match_beam_kwargs)
+        res = match_beam(
+            navi.lat, constraints, elements, parray0, navi, **match_beam_kwargs
+        )
 
         # Apply the result to the simulation config.
         if felconfig is None:
@@ -635,40 +643,56 @@ class SectionedFEL:
         else:
             new_conf = deepcopy(felconfig)
 
-        new_conf.controller.components = {quad_name: {"k1": strength} for (quad_name, strength)
-                                          in zip([x.id for x in elements], res)}
+        new_conf.controller.components = {
+            quad_name: {"k1": strength}
+            for (quad_name, strength) in zip([x.id for x in elements], res)
+        }
 
         return new_conf
 
-    def match(self, twiss0: Twiss, *, 
-              elements: list[str],
-              constraints: dict[str: dict[str, float]],
-              start: ElementAccessType = None,
-              stop: ElementAccessType = None,
-              felconfig: Optional[FELSimulationConfig] = None,
-              **match_kwargs) -> FELSimulationConfig:
-
+    def match(
+        self,
+        twiss0: Twiss,
+        *,
+        elements: list[str],
+        constraints: dict[str : dict[str, float]],
+        start: ElementAccessType = None,
+        stop: ElementAccessType = None,
+        felconfig: Optional[FELSimulationConfig] = None,
+        verbose=False,
+        **match_kwargs,
+    ) -> FELSimulationConfig:
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
         lat_matching = MagneticLattice(sequence)
 
         elements = _get_element_instances_from_mlat(lat_matching, elements)
         # Magic one liner that takes element names as keys and turns them into Element instances
-        constraints = dict(zip(_get_element_instances_from_mlat(lat_matching, constraints.keys()), constraints.values()))
+        constraints = dict(
+            zip(
+                _get_element_instances_from_mlat(lat_matching, constraints.keys()),
+                constraints.values(),
+            )
+        )
 
-        res = match(lat_matching, constraints, elements, twiss0, **match_kwargs)
+        res = match(
+            lat_matching, constraints, elements, twiss0, verbose=verbose, **match_kwargs
+        )
 
         # Apply the result to the simulation config.
         if felconfig is None:
             new_conf = FELSimulationConfig()
         else:
             new_conf = deepcopy(felconfig)
-        
-        new_conf.controller.components = {quad_name: {"k1": strength} for (quad_name, strength)
-                                          in zip([x.id for x in elements], res)}
+
+        matched_strengths = {
+            quad_name: {"k1": strength}
+            for (quad_name, strength) in zip([x.id for x in elements], res)
+        }
+
+        new_conf.controller.components.update(matched_strengths)
 
         return new_conf
 
-        
 
 class ElementNotFoundError(KeyError):
     pass
@@ -684,12 +708,16 @@ class SequenceController:
 
 class TDSControl(SequenceController):
     def __init__(
-        self, regex: str, phi: Optional[float] = None, v: Optional[float] = None
+        self,
+        regex: str,
+        phi: Optional[float] = None,
+        v: Optional[float] = None,
+        active: bool = True,
     ):
         super().__init__(regex)
-        self.phi = None
-        self.v = None
-        self.active = True
+        self.phi = phi
+        self.v = v
+        self.active = active
 
     @property
     def should_modify(self) -> bool:
@@ -712,20 +740,32 @@ class TDSControl(SequenceController):
             element.phi = self.phi
 
     def disable(self, element: OpticElement) -> None:
+        element.phi = 0.0
         element.v = 0.0
         print(
-            f"Applying Cavity control to element: {element}.  Disabling: {element.v=}"
+            f"Cavity control on element: {element}.  Disabling: {element.v=}, {element.phi=}"
         )
 
     def __repr__(self) -> str:
         tname = type(self).__name__
         return f"<{tname}: phi={self.phi}, v={self.v}>"
 
+    def __or__(self, other):
+        result = deepcopy(self)
+        result |= other
+        return result
+
+    def __ior__(self, other):
+        self.phi = other.phi
+        self.v = other.v
+        self.active = other.active
+        return self
+
 
 class ChicaneControl(SequenceController):
     def __init__(self, regex: str, rho: Optional[float] = None):
         super().__init__(regex)
-        self.rho = None
+        self.rho = rho
 
     def apply(self, sequence: MachineSequence) -> None:
         if rho is None:
@@ -737,6 +777,15 @@ class ChicaneControl(SequenceController):
             if self.match(element):
                 dipoles.append(element)
 
+    def __or__(self, other):
+        result = deepcopy(self)
+        result |= other
+        return result
+
+    def __ior__(self, other):
+        self.rho = other.rho
+        return self
+
 
 class CavityControl(TDSControl):
     def __init__(
@@ -744,29 +793,98 @@ class CavityControl(TDSControl):
         regex: str,
         phi: Optional[float] = None,
         v: Optional[float] = None,
+        active: bool = True,
         coupler_kick: bool = False,
     ):
-        super().__init__(regex, phi=phi, v=v)
+        super().__init__(regex, phi=phi, v=v, active=active)
         self.coupler_kick = coupler_kick
 
     def apply(self, element: OpticElement) -> None:
         super().apply(element)
+        print("!!!!", element)
+
         if not self.coupler_kick:
             print(f"Removing coupler kick: {repr(element)}")
             element.remove_coupler_kick()
+
+    def __ior__(self, other):
+        self.phi = other.phi
+        self.v = other.v
+        self.active = other.active
+        self.coupler_kick = other.coupler_kick
+        return self
+
+
+class CompressionControl:
+    def __init__(self, args):
+        "docstring"
+
+    pass
+
+
+class SectionControl:
+    def __init__(self, regex):
+        self.regex = regex
+
+    def modify_sequence(self, sequence):
+        pass
+
+
+class ChicaneControl(SectionControl):
+    MAX_DIPOLES = 4
+
+    def _find_chicane_indices(self):
+        chicane_indices = []
+        for i, element in enumerate(sequence):
+            if self.regex.match(sequence):
+                chicane_indices.append(i)
+            if len(chicane_indices) == self.MAX_DIPOLES:
+                break
+        return chicane_indices
+
+    def modify_sequence(self, sequence):
+        chicane_indices = self._find_chicane_indices(sequence)
+
+        first_drift = sequence[chicane_indices[0] + 1 : chicane_indices[1]]
+        # middle_drift = sequence[chicane_indices[1]:chicane_indices[2]]
+        last_drift = sequence[chicane_indices[2] + 1 : chicane_indices[3]]
 
 
 class EuXFELController:
     def __init__(self, components: dict = None):
         self.components = components if components is not None else {}
         self.tds1 = TDSControl(regex=r"TDSA\.52\.I1")
+        self.tds2 = TDSControl(regex=r"TDSB\.(428|430)\.B2")
         self.a1 = CavityControl(r"C\.A1\.1\.[0-8].I1")
         self.ah1 = CavityControl(r"C3\.AH1\.1\.[0-8].I1")
         self.a2 = CavityControl(regex=r"C\.A2\.[0-4]\.[0-8].L1")
         self.a3 = CavityControl(regex=r"C\.A[3-5]\.[0-4]\.[0-8].L2")
         self.bc0 = ChicaneControl(regex=r"BB\.(96|98|100|101)\.I1")
+        self.bc1 = ChicaneControl(regex=r"BB\.(182|191|193|202)\.B1")
+        self.bc2 = ChicaneControl(regex=r"BB\.(393|402|404|413)\.B2")
 
         self.global_coupler_kick = None
+
+    def __ior__(self, other) -> FELSimulationConfig:
+        self.components |= other.components
+
+        self.tds1 |= other.tds1
+        self.tds2 |= other.tds2
+        self.a1 |= other.a1
+        self.ah1 |= other.ah1
+        self.a2 |= other.a2
+        self.a3 |= other.a3
+        self.bc0 |= other.bc0
+        # self.bc1 |=
+
+        self.global_coupler_kick = other.global_coupler_kick
+
+        return self
+
+    def __or__(self, other):
+        result = deepcopy(self)
+        result |= other
+        return result
 
     def modify_sequence(self, sequence: Iterable[OpticElement]) -> MachineSequence:
         """Given an EuXFEL sequence, modify it based on the
@@ -778,12 +896,18 @@ class EuXFELController:
                 self.tds1.apply(element)
                 continue
 
+            if self.tds2.match(element):
+                self.tds2.apply(element)
+                continue
+
             # Set A1
             if self.a1.match(element):
                 self.a1.apply(element)
                 continue
 
             if self.ah1.match(element):
+                print("Turning off AH1?")
+                # from IPython import embed; embed()
                 self.ah1.apply(element)
                 continue
 
@@ -837,17 +961,17 @@ class FELSimulationConfig:
         - AH1 Cavities: phi = {self.controller.ah1.phi}, v = {self.controller.ah1.v}"""
         )
 
+    def __ior__(self, other) -> FELSimulationConfig:
+        self.metadata |= other.metadata
+        self.controller |= other.controller
+        self.coupler_kick = other.coupler_kick
+        self.unit_step = other.unit_step
+        return self
 
-    # def __ior__(self, other) -> FELSimulationConfig:
-    #     # self.metadata |= other.metadata
-    #     self.controller.components |= other.controller.components
-    #     self.coupler_kick = other.coupler_kick
-    #     self.unit_step = other.unit_step
-
-    # def __or__(self, other):
-    #     result = deepcopy(self)
-    #     result |= other
-    #     return result
+    def __or__(self, other):
+        result = deepcopy(self)
+        result |= other
+        return result
 
     # def bc_analysis(self):
     #     # find positions
@@ -983,7 +1107,6 @@ class SliceTwissCalculator(PhysProc):
         # self.twiss.id = sel
         # print("!!!!!!!!!!!!!!!!!!!!!!!!", self.name)
         # if self.name == "MATCH.428.B2_after":
-        #     import ipdb; ipdb.set_trace()
 
         self.twiss = twiss_parray_slice(
             parray,
@@ -1027,13 +1150,23 @@ def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):
 
 def _add_save_beams(navi, element_names, outdir):
     for element_name in element_names:
-        fname = Path(outdir) / f"{element_name}.npz"
+        if isinstance(element_names, str):
+            fname = Path(outdir) / f"{element_name}.npz"
+        elif not isinstance(element_name, str):
+            element_name, fname = element_name
+            fname = outdir / f"{fname}"
+            if fname.suffix != ".npz":
+                fname = str(fname) + ".npz"
+
         proc = SaveBeam(fname)
         proc.element_name = element_name
+
         try:
-            navi.add_physics_proc(proc, element_name, element_name)
-        except KeyError:
-            continue
+            element = next(x for x in navi.lat.sequence if x.id == element_name)
+        except StopIteration:
+            raise ElementNotFoundError(f"{element_name} not found")
+
+        navi.add_physics_proc(proc, element, element)
         LOG.debug(f"Added SaveBeam process to {element_name}, writing to {fname}")
 
 
@@ -1053,12 +1186,16 @@ def _extract_twiss_paramters_from_twiss_processes(twiss_processes):
 
     return twissdf
 
+
 def _get_element_instances_from_mlat(mlat, names):
     elements = []
+
     def f(ele):
         return ele.id in names
+
     indices = mlat.find_indices_by_predicate(f)
     return [mlat.sequence[i] for i in indices]
+
 
 # def _get_element_instance_from_mlat(mlat, name):
 #     def f(ele):
@@ -1066,4 +1203,5 @@ def _get_element_instances_from_mlat(mlat, names):
 #     indices = mlat.find_indices_by_predicate(f)
 #     assert len(indices
 #     return mlat.sequence[i]
-    
+
+# def print_real_match_points_twiss(df):
