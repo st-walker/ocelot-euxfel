@@ -1,0 +1,342 @@
+&NEWRUN
+Head='XFEL2021'
+RUN=1
+Loop=F
+Nloop=2
+Distribution="BSA1d_3ps_250pC_100k.ini"
+Xoff=0.0
+Yoff=0.0
+TRACK_ALL=T,
+AUTO_PHASE=T
+check_ref_part=F
+H_max=0.001
+H_min=0
+Lmonitor=F
+!LPROMPT=F
+Z_cathode=0
+Qbunch = 0.25
+Max_step = 200000
+/
+
+&OUTPUT
+! Cathode:
+ZSTART=0
+! End of the gun:
+! ZSTOP = 3.2
+! in front of first quadrupole (Q.37.I1):
+! ZSTOP = 14.4916
+! in front of
+! directly after QI.47.I1, which is just before the lh chicane, about 10cm:
+! ZSTOP = 24.64205
+! in front of QI.52.I1 (the matching point in front of the TDS):
+! ZSTOP = 29.128155
+! I1D dump:
+ZSTOP=43.7727756298487
+Zphase=40
+EmitS=T
+PhaseS=T
+TrackS=F
+RefS=T
+TcheckS=F
+CathodeS=F
+high_res=T,
+! OTRC.64.I1D (where we measured the slice energy spread)
+SCREEN(1)=40.89905219272766
+Scr_xrot(1)=-0.5235987756000001
+/
+
+
+&SCAN
+LScan=F
+Scan_para='MaxB(1)'
+S_min=0.2160
+S_max=0.2195
+S_numb=6
+!Scan_para='Qbunch'
+!S_min=0.1
+!S_max=0.3
+!S_numb=6
+FOM(1)='charge'
+FOM(2)='hor. Emittance'
+FOM(3)='ver. Emittance'
+FOM(4)='hor. spot'
+FOM(5)='ver. spot'
+FOM(6)='bunch length'
+FOM(7)='rms energy'
+FOM(8)='mean beam momentum'
+FOM(9)='rms beam energy spread'
+/
+
+&CHARGE
+LSPCH=T
+!Nrad=70
+!Nlong_in =260
+Nrad=60
+Nlong_in =160
+Cell_var=2.0
+min_grid=0.0
+N_min=30
+Max_scale=0.05
+Max_count=40
+Lmirror=T
+/
+
+&Aperture
+/
+
+&FEM
+/
+
+
+&SOLENOID
+LBfield=T
+File_Bfield(1)="Main_and_Buck_sym2.prn"
+MaxB(1)=0.2167
+S_pos(1)=0
+S_Smooth(1)=0
+/
+
+
+&CAVITY
+Loop=.F
+LEFieLD=T
+FILE_EFieLD(1)="rz_GUN_FEM-003-531-531-filt3.dat"
+Nue(1)=1.3
+MaxE(1)=56.3
+Phi(1)=-4
+C_pos(1)=0.0
+C_smooth(1)=0
+
+! Desired average per module: 15.44196575776454 MeV energy gain.
+
+FILE_EFieLD(2)="tesla1cav2.dat"
+  Nue(2)=1.3
+  MaxE(2)=28.65
+  Phi(2)=0
+  C_pos(2)=4.04005
+  C_smooth(2)=0
+
+  FILE_EFieLD(3)="tesla1cav2.dat"
+  Nue(3)=1.3
+  MaxE(3)=28.65
+  Phi(3)=0
+  C_pos(3)=5.42365
+  C_smooth(3)=0
+
+  FILE_EFieLD(4)="tesla1cav2.dat"
+  Nue(4)=1.3
+  MaxE(4)=28.65
+  Phi(4)=0
+  C_pos(4)=6.80725
+  C_smooth(4)=0
+
+  FILE_EFieLD(5)="tesla1cav2.dat"
+  Nue(5)=1.3
+  MaxE(5)=28.65
+  Phi(5)=0
+  C_pos(5)=8.19085
+  C_smooth(5)=0
+
+  FILE_EFieLD(6)="tesla1cav2.dat"
+  Nue(6)=1.3
+  MaxE(6)=28.65
+  Phi(6)=0
+  C_pos(6)=9.574450
+  C_smooth(6)=0
+
+  FILE_EFieLD(7)="tesla1cav2.dat"
+  Nue(7)=1.3
+  MaxE(7)=28.65
+  Phi(7)=0
+  C_pos(7)=10.95805
+  C_smooth(7)=0
+
+  FILE_EFieLD(8)="tesla1cav2.dat"
+  Nue(8)=1.3
+  MaxE(8)=28.65
+  Phi(8)=0
+  C_pos(8)=12.34165
+  C_smooth(8)=0
+
+  FILE_EFieLD(9)="tesla1cav2.dat"
+  Nue(9)=1.3
+  MaxE(9)=28.65
+  Phi(9)=0
+  C_pos(9)=13.72525
+  C_smooth(9)=0
+
+  ! These are the AH1 cavities.  Switched off for the energy spread measurement
+  ! configuration by commenting them out here.
+  ! FILE_EFieLD(10)="tesla4cav3.dat"
+  ! Nue(10)=3.9
+  ! MaxE(10)=17.2688
+  ! Phi(10)=186
+  ! C_pos(10)=16.3242667
+
+  ! FILE_EFieLD(11)="tesla4cav3.dat"
+  ! Nue(11)=3.9
+  ! MaxE(11)=17.2688
+  ! Phi(11)=186
+  ! C_pos(11)=18.7562667
+/
+
+
+! ------
+
+
+&QUADRUPOLE
+Loop=.F
+LQUAD=.T
+! Quadrupole: Q.37.I1
+Q_length(1)=0.2136
+Q_K(1)=-1.4273833537636085
+Q_Bore(1)=1e-07
+Q_pos(1)=14.598400000000007
+
+! Quadrupole: Q.38.I1
+Q_length(2)=0.2136
+Q_K(2)=1.5878116856930053
+Q_Bore(2)=1e-07
+Q_pos(2)=15.747400000000008
+
+! Quadrupole: QI.46.I1
+Q_length(3)=0.2377
+Q_K(3)=-0.28561932941352697
+Q_Bore(3)=1e-07
+Q_pos(3)=23.644700000000014
+
+! Quadrupole: QI.47.I1
+Q_length(4)=0.2377
+Q_K(4)=0.5216282406917998
+Q_Bore(4)=1e-07
+Q_pos(4)=24.523200000000017
+
+! Quadrupole: QI.50.I1
+Q_length(5)=0.2377
+Q_K(5)=-0.14719312924017
+Q_Bore(5)=1e-07
+Q_pos(5)=27.73319897032604
+
+! Quadrupole: QI.52.I1
+Q_length(6)=0.2377
+Q_K(6)=-0.3522076137989062
+Q_Bore(6)=1e-07
+Q_pos(6)=29.244688970326045
+
+! Quadrupole: QI.53.I1
+Q_length(7)=0.2377
+Q_K(7)=2.1047941859486747
+Q_Bore(7)=1e-07
+Q_pos(7)=30.284688970326048
+
+! Quadrupole: QI.54.I1
+Q_length(8)=0.2377
+Q_K(8)=0.7943661064366849
+Q_Bore(8)=1e-07
+Q_pos(8)=31.23668897032605
+
+! Quadrupole: QI.55.I1
+Q_length(9)=0.2377
+Q_K(9)=-3.526311
+Q_Bore(9)=1e-07
+Q_pos(9)=32.78668897032604
+
+! Quadrupole: QI.57.I1
+Q_length(10)=0.2377
+Q_K(10)=3.526311
+Q_Bore(10)=1e-07
+Q_pos(10)=34.33668897032603
+
+! Quadrupole: QI.59.I1
+Q_length(11)=0.2377
+Q_K(11)=-3.526311
+Q_Bore(11)=1e-07
+Q_pos(11)=35.88668897032603
+
+! Quadrupole: QI.60.I1
+Q_length(12)=0.2377
+Q_K(12)=2.145682287
+Q_Bore(12)=1e-07
+Q_pos(12)=36.98668897032602
+
+! Quadrupole: QI.61.I1
+Q_length(13)=0.2377
+Q_K(13)=0.8685937479
+Q_Bore(13)=1e-07
+Q_pos(13)=38.236688970326014
+
+! Quadrupole: QI.63.I1D
+Q_length(14)=0.2377
+Q_K(14)=4.401795
+Q_Bore(14)=1e-07
+Q_pos(14)=40.309288892751034
+Q_xoff(14)=-0.6719094734763956
+Q_xrot(14)=-0.5235987756000001
+
+! Quadrupole: QI.64.I1D
+Q_length(15)=0.2377
+Q_K(15)=0.0
+Q_Bore(15)=1e-07
+Q_pos(15)=41.13201302634545
+Q_xoff(15)=-1.1469094734777954
+Q_xrot(15)=-0.5235987756000001
+/
+
+
+! ------
+
+
+&DIPOLE
+Loop=.F
+LDipole=.T
+! Dipole: BL.48I.I1
+D_Type(1)="horizontal"
+D1(1)=(0.25, 24.774035261006222)
+D2(1)=(-0.25, 24.774035261006222)
+D3(1)=(0.25, 24.97403526100622)
+D4(1)=(-0.25, 24.97403526100622)
+D_radius(1)=-2.0103735274013914
+D_Gap(1,1)=0.0000001
+D_Gap(2,1)=0.0000001
+
+! Dipole: BL.48II.I1
+D_Type(2)="horizontal"
+D1(2)=(0.25, 25.074033987635257)
+D2(2)=(-0.25, 25.074033987635257)
+D3(2)=(0.25, 25.274033987635256)
+D4(2)=(-0.25, 25.274033987635256)
+D_radius(2)=2.0103735274013914
+D_Gap(1,2)=0.0000001
+D_Gap(2,2)=0.0000001
+
+! Dipole: BL.50I.I1
+D_Type(3)="horizontal"
+D1(3)=(0.25, 26.982034248641458)
+D2(3)=(-0.25, 26.982034248641458)
+D3(3)=(0.25, 27.182034248641457)
+D4(3)=(-0.25, 27.182034248641457)
+D_radius(3)=2.0103735274013914
+D_Gap(1,3)=0.0000001
+D_Gap(2,3)=0.0000001
+
+! Dipole: BL.50II.I1
+D_Type(4)="horizontal"
+D1(4)=(0.25, 27.28203397032604)
+D2(4)=(-0.25, 27.28203397032604)
+D3(4)=(0.25, 27.48203397032604)
+D4(4)=(-0.25, 27.48203397032604)
+D_radius(4)=-2.0103735274013914
+D_Gap(1,4)=0.0000001
+D_Gap(2,4)=0.0000001
+
+! Dipole: BB.62.I1D
+D_Type(5)="horizontal"
+D1(5)=(0.25, 38.86389432964584)
+D2(5)=(-0.25, 38.86389432964584)
+D3(5)=(0.25, 39.36965132964584)
+D4(5)=(-0.25, 39.36965132964584)
+D_radius(5)=0.9659247186367943
+D_Gap(1,5)=0.0000001
+D_Gap(2,5)=0.0000001
+D_xrot(5)=-0.2617993878
+/
