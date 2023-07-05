@@ -3,7 +3,7 @@ Head='XFEL2021'
 RUN=1
 Loop=F
 Nloop=2
-Distribution='..\..\Generator\BSA1d_3ps_250pC_10k.ini'
+Distribution='BSA1d_3ps_250pC_100k.ini'
 Xoff=0.0
 Yoff=0.0
 TRACK_ALL=T,
@@ -22,7 +22,7 @@ Max_step = 200000
 ! Cathode:
 ZSTART=0
 ! End of the gun:
-! ZSTOP = 3.2
+ZSTOP = 3.2
 ! in front of first quadrupole (Q.37.I1):
 ! ZSTOP = 14.4916
 ! in front of
@@ -31,7 +31,7 @@ ZSTART=0
 ! in front of QI.52.I1 (the matching point in front of the TDS):
 ! ZSTOP = 29.128155
 ! I1D dump:
-ZSTOP=43.7727756298487
+! ZSTOP=43.7727756298487
 Zphase=40
 EmitS=T
 PhaseS=F
@@ -68,7 +68,7 @@ FOM(9)='rms beam energy spread'
 /
 
 &CHARGE
-LSPCH=F
+LSPCH=T
 !Nrad=70
 !Nlong_in =260
 Nrad=60
@@ -90,7 +90,7 @@ Lmirror=T
 
 &SOLENOID
 LBfield=T
-File_Bfield(1)='..\..\Fields\Main_and_Buck_sym2.prn'
+File_Bfield(1)='Main_and_Buck_sym2.prn'
 MaxB(1)=0.2167
 S_pos(1)=0
 S_Smooth(1)=0
@@ -100,7 +100,7 @@ S_Smooth(1)=0
 &CAVITY
 Loop=.F
 LEFieLD=T
-FILE_EFieLD(1)='..\..\Fields\rz_GUN_FEM-003-531-531-filt3.dat'
+FILE_EFieLD(1)='rz_GUN_FEM-003-531-531-filt3.dat'
 Nue(1)=1.3
 MaxE(1)=56.3
 Phi(1)=-4
@@ -109,56 +109,56 @@ C_smooth(1)=0
 
 ! Desired average per module: 15.44196575776454 MeV energy gain.
 
-FILE_EFieLD(2)='..\..\Fields\tesla1cav2.dat'
+FILE_EFieLD(2)='tesla1cav2.dat'
   Nue(2)=1.3
   MaxE(2)=28.65
   Phi(2)=0
   C_pos(2)=4.04005
   C_smooth(2)=0
 
-  FILE_EFieLD(3)='..\..\Fields\tesla1cav2.dat'
+  FILE_EFieLD(3)='tesla1cav2.dat'
   Nue(3)=1.3
   MaxE(3)=28.65
   Phi(3)=0
   C_pos(3)=5.42365
   C_smooth(3)=0
 
-  FILE_EFieLD(4)='..\..\Fields\tesla1cav2.dat'
+  FILE_EFieLD(4)='tesla1cav2.dat'
   Nue(4)=1.3
   MaxE(4)=28.65
   Phi(4)=0
   C_pos(4)=6.80725
   C_smooth(4)=0
 
-  FILE_EFieLD(5)='..\..\Fields\tesla1cav2.dat'
+  FILE_EFieLD(5)='tesla1cav2.dat'
   Nue(5)=1.3
   MaxE(5)=28.65
   Phi(5)=0
   C_pos(5)=8.19085
   C_smooth(5)=0
 
-  FILE_EFieLD(6)='..\..\Fields\tesla1cav2.dat'
+  FILE_EFieLD(6)='tesla1cav2.dat'
   Nue(6)=1.3
   MaxE(6)=28.65
   Phi(6)=0
   C_pos(6)=9.574450
   C_smooth(6)=0
 
-  FILE_EFieLD(7)='..\..\Fields\tesla1cav2.dat'
+  FILE_EFieLD(7)='tesla1cav2.dat'
   Nue(7)=1.3
   MaxE(7)=28.65
   Phi(7)=0
   C_pos(7)=10.95805
   C_smooth(7)=0
 
-  FILE_EFieLD(8)='..\..\Fields\tesla1cav2.dat'
+  FILE_EFieLD(8)='tesla1cav2.dat'
   Nue(8)=1.3
   MaxE(8)=28.65
   Phi(8)=0
   C_pos(8)=12.34165
   C_smooth(8)=0
 
-  FILE_EFieLD(9)='..\..\Fields\tesla1cav2.dat'
+  FILE_EFieLD(9)='tesla1cav2.dat'
   Nue(9)=1.3
   MaxE(9)=28.65
   Phi(9)=0
@@ -167,13 +167,13 @@ FILE_EFieLD(2)='..\..\Fields\tesla1cav2.dat'
 
   ! These are the AH1 cavities.  Switched off for the energy spread measurement
   ! configuration by commenting them out here.
-  ! FILE_EFieLD(10)='..\..\Fields\tesla4cav3.dat'
+  ! FILE_EFieLD(10)='tesla4cav3.dat'
   ! Nue(10)=3.9
   ! MaxE(10)=17.2688
   ! Phi(10)=186
   ! C_pos(10)=16.3242667
 
-  ! FILE_EFieLD(11)='..\..\Fields\tesla4cav3.dat'
+  ! FILE_EFieLD(11)='tesla4cav3.dat'
   ! Nue(11)=3.9
   ! MaxE(11)=17.2688
   ! Phi(11)=186
