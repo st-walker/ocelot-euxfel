@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import re
-from typing import Optional, Any, Union
+from typing import Optional, Any, Union, TypeVar
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from collections import deque
@@ -13,15 +13,18 @@ import ocelot.cpbd.elements as elements
 from ocelot.cpbd.magnetic_lattice import MagneticLattice
 from ocelot.cpbd.beam import Twiss
 from ocelot.cpbd.latticeIO import LatticeIO
+from ocelot.cpbd.elements.optic_element import OpticElement
 import pandas as pd
 import toml
 
+from .fel_track import FELSimulationConfig
 
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.INFO)
 
 AnyTupT = tuple[Any, ...]
+ElementT = TypeVar("ElementT", bound=OpticElement)
 
 # Filtering these not just for clutter reasons but also they often
 # overlap with other beamline elements, meaning in effect we have to
@@ -178,7 +181,7 @@ class LongListConverter:
         bad_row_indices = [x.Index for x in bad_rows]
         return df.drop(index=bad_row_indices)
 
-    def convert_section(self, pysec: LatticeSection) -> list[elements.OpticElement]:
+    def convert_section(self, pysec: LatticeSection) -> list[ElementT]:
         # Do the slicing.
         section_df = self.df.set_index("NAME1").loc[
             pysec.start_name1 : pysec.stop_name1
@@ -234,7 +237,6 @@ class LongListConverter:
             # Drift, Marker
             drift_length = self._round(s - s_start)
             if drift_length > 0:
-                print(drift_length)
                 oelement_with_markers.append(self._next_drift(l=drift_length))
             oelement_with_markers.append(marker)
             s_start = s
@@ -248,7 +250,7 @@ class LongListConverter:
         self.drift_counter += 1
         return drift
 
-    def _apply_manual_changes(self, element: elements.OpticElement) -> None:
+    def _apply_manual_changes(self, element: ElementT) -> None:
         try:
             properties = self.extra_properties[element.id]
         except KeyError:
@@ -259,7 +261,7 @@ class LongListConverter:
                 if property_name == "nperiods" or property_name == "lperiod":
                     element.l = element.nperiods * element.lperiod
 
-    def dispatch(self, row: AnyTupT) -> elements.OpticElement:
+    def dispatch(self, row: AnyTupT) -> ElementT:
         ocelot_class_name = row.GROUP.lower()
         try:
             oelement = getattr(self, f"convert_{ocelot_class_name}")(row)
@@ -402,6 +404,38 @@ def longlist_to_ocelot(
         )
         print("Written", outf)
 
+    real_config = make_felconfig_design_to_real(config["extras"]["real"])
+
+
+def make_felconfig_design_to_real(dconf: dict) -> FELSimulationConfig:
+    result = FELSimulationConfig()
+
+    try:
+        lh_angle = dconf["hlc"]["LH"]["angle"]
+    except KeyError:
+        lh_angle = None
+    result.controller.lh.angle = lh_angle
+
+    try:
+        bc0_angle = dconf["hlc"]["BC0"]["angle"]
+    except KeyError:
+        bc0_angle = None
+    result.controller.bc0.angle = bc0_angle
+
+    try:
+        bc1_angle = dconf["hlc"]["BC1"]["angle"]
+    except KeyError:
+        bc1_angle = None
+    result.controller.bc1.angle = bc1_angle
+
+    try:
+        bc2_angle = dconf["hlc"]["BC2"]["angle"]
+    except KeyError:
+        bc2_angle = None
+    result.controller.bc2.angle = bc2_angle
+
+    result.controller.components = dconf["components"]
+    return result
 
 def _parse_new_markers_dict(dconf: dict) -> list[Union[RelativeMarker, SMarker]]:
     markers = []

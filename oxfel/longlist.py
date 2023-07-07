@@ -1,8 +1,7 @@
 import pandas as pd
 
 
-DEFAULT_LONGLIST = "/Users/stuartwalker/repos/oxfel/oxfel/component_list_2023.07.01.xls"
-
+DEFAULT_LONGLIST = "/Users/stuartwalker/repos/oxfel/oxfel/accelerator/lattice/component_list_2023.07.01.xls"
 
 def make_default_longlist():
     return XFELLongList(DEFAULT_LONGLIST)

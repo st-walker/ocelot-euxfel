@@ -106,3 +106,9 @@ ENV/
 .idea/
 
 \#*
+
+oxfel/astra/euxfel-injector*emit*
+oxfel/astra/NORRAN
+oxfel/astra/euxfel-injector.ref.001
+oxfel/astra/euxfel-injector.Log.001
+

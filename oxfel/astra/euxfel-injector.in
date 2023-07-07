@@ -32,9 +32,9 @@ ZSTOP = 3.2
 ! ZSTOP = 29.128155
 ! I1D dump:
 ! ZSTOP=43.7727756298487
-Zphase=40
+Zphase=1
 EmitS=T
-PhaseS=F
+PhaseS=T
 TrackS=F
 RefS=T
 TcheckS=F

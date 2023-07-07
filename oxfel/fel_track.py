@@ -35,7 +35,10 @@ from ocelot.cpbd.beam import optics_from_moments, moments_from_parray
 from ocelot.cpbd.match import match, match_beam
 
 
+logging.basicConfig()
 LOG = logging.getLogger(__name__)
+LOG.setLevel(logging.INFO)
+
 
 ElementAccessType = Optional[Union[int, str, OpticElement]]
 
@@ -229,7 +232,8 @@ class SectionedFEL:
     """
 
     def __init__(
-        self, sections: list[FELSection], twiss0: Twiss, outdir: os.PathLike = "./"
+            self, sections: list[FELSection], twiss0: Twiss, outdir: os.PathLike = "./",
+            felconfig=None
     ):
         """
 
@@ -238,8 +242,20 @@ class SectionedFEL:
         self.outdir = Path(outdir)
         self.sections = [sec(self.outdir) for sec in sections]
         self.twiss0 = twiss0
+        self.felconfig = felconfig if felconfig else None
 
         self._check_sections_for_duplicate_start_stops()
+
+    def _net_felconfig(self, felconfig2=None):
+        felconfig = self.felconfig
+        if felconfig is None:
+            felconfig = FELSimulationConfig()
+
+        if felconfig2 is None:
+            felconfig2 = FELSimulationConfig()
+
+        return felconfig | felconfig2
+
 
     def _check_sections_for_duplicate_start_stops(self) -> None:
         sections = self.sections
@@ -288,6 +304,7 @@ class SectionedFEL:
         stop: ElementAccessType = None,
         felconfig: Optional[FELSimulationConfig] = None,
         dumps=None,
+        physics=True,
     ) -> ParticleArray:
         parray1, _ = self._piecewise_matched_tracking(
             parray0,
@@ -296,6 +313,7 @@ class SectionedFEL:
             stop=stop,
             felconfig=felconfig,
             dumps=dumps,
+            physics=physics,
         )
 
         return parray1
@@ -408,8 +426,8 @@ class SectionedFEL:
         felconfig: Optional[FELSimulationConfig] = None,
         physics: bool = True,
     ) -> Navigator:
-        if felconfig is None:
-            felconfig = FELSimulationConfig()
+
+        felconfig = self._net_felconfig(felconfig)
 
         # Make the navigator
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
@@ -555,9 +573,8 @@ class SectionedFEL:
         if stop is not None and not found_stop:
             raise ValueError(f"Stop position {stop} not found in sequence")
 
-        if felconfig is not None:
-            return MachineSequence(felconfig.controller.modify_sequence(result))
-        return MachineSequence(deepcopy(result))
+        net_felconfig = self._net_felconfig(felconfig2=felconfig)
+        return MachineSequence(net_felconfig.controller.modify_sequence(result))
 
     def length(self) -> float:
         x = 0
@@ -604,10 +621,11 @@ class SectionedFEL:
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
         felconfig: Optional[FELSimulationConfig] = None,
+        physics=True,
         **match_beam_kwargs,
     ) -> FELSimulationConfig:
         # Make navigator from given start, stop and felconfig
-        navi = self.to_navigator(start=start, stop=stop, felconfig=felconfig)
+        navi = self.to_navigator(start=start, stop=stop, felconfig=felconfig, physics=physics)
 
         # Update match_beam_kwargs with function **kwargs.
         match_beam_kwargs = {
@@ -638,10 +656,7 @@ class SectionedFEL:
         )
 
         # Apply the result to the simulation config.
-        if felconfig is None:
-            new_conf = FELSimulationConfig()
-        else:
-            new_conf = deepcopy(felconfig)
+        new_conf = deepcopy(self._net_felconfig(felconfig))
 
         new_conf.controller.components = {
             quad_name: {"k1": strength}
@@ -659,7 +674,7 @@ class SectionedFEL:
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
         felconfig: Optional[FELSimulationConfig] = None,
-        verbose=False,
+        verbose=True,
         **match_kwargs,
     ) -> FELSimulationConfig:
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
@@ -679,10 +694,7 @@ class SectionedFEL:
         )
 
         # Apply the result to the simulation config.
-        if felconfig is None:
-            new_conf = FELSimulationConfig()
-        else:
-            new_conf = deepcopy(felconfig)
+        new_conf = deepcopy(self._net_felconfig(felconfig))
 
         matched_strengths = {
             quad_name: {"k1": strength}
@@ -762,31 +774,6 @@ class TDSControl(SequenceController):
         return self
 
 
-class ChicaneControl(SequenceController):
-    def __init__(self, regex: str, rho: Optional[float] = None):
-        super().__init__(regex)
-        self.rho = rho
-
-    def apply(self, sequence: MachineSequence) -> None:
-        if rho is None:
-            return
-
-    def _get_chicane(self, sequence: MachineSequence) -> None:
-        dipoles = []
-        for element in sequence:
-            if self.match(element):
-                dipoles.append(element)
-
-    def __or__(self, other):
-        result = deepcopy(self)
-        result |= other
-        return result
-
-    def __ior__(self, other):
-        self.rho = other.rho
-        return self
-
-
 class CavityControl(TDSControl):
     def __init__(
         self,
@@ -801,10 +788,9 @@ class CavityControl(TDSControl):
 
     def apply(self, element: OpticElement) -> None:
         super().apply(element)
-        print("!!!!", element)
 
         if not self.coupler_kick:
-            print(f"Removing coupler kick: {repr(element)}")
+            LOG.debug(f"Removing coupler kick: {repr(element)}")
             element.remove_coupler_kick()
 
     def __ior__(self, other):
@@ -813,13 +799,6 @@ class CavityControl(TDSControl):
         self.active = other.active
         self.coupler_kick = other.coupler_kick
         return self
-
-
-class CompressionControl:
-    def __init__(self, args):
-        "docstring"
-
-    pass
 
 
 class SectionControl:
@@ -832,6 +811,10 @@ class SectionControl:
 
 class ChicaneControl(SectionControl):
     MAX_DIPOLES = 4
+
+    def __init__(self, regex, angle=None):
+        super().__init__(regex)
+        self.angle = angle
 
     def _find_chicane_indices(self):
         chicane_indices = []
@@ -849,6 +832,9 @@ class ChicaneControl(SectionControl):
         # middle_drift = sequence[chicane_indices[1]:chicane_indices[2]]
         last_drift = sequence[chicane_indices[2] + 1 : chicane_indices[3]]
 
+    def __ior__(self, other):
+        self.angle = other.angle
+        return self
 
 class EuXFELController:
     def __init__(self, components: dict = None):
@@ -859,6 +845,7 @@ class EuXFELController:
         self.ah1 = CavityControl(r"C3\.AH1\.1\.[0-8].I1")
         self.a2 = CavityControl(regex=r"C\.A2\.[0-4]\.[0-8].L1")
         self.a3 = CavityControl(regex=r"C\.A[3-5]\.[0-4]\.[0-8].L2")
+        self.lh = ChicaneControl(regex="BL\.(48I|48II|50I|50II)\.I1")
         self.bc0 = ChicaneControl(regex=r"BB\.(96|98|100|101)\.I1")
         self.bc1 = ChicaneControl(regex=r"BB\.(182|191|193|202)\.B1")
         self.bc2 = ChicaneControl(regex=r"BB\.(393|402|404|413)\.B2")
@@ -874,8 +861,10 @@ class EuXFELController:
         self.ah1 |= other.ah1
         self.a2 |= other.a2
         self.a3 |= other.a3
+        self.lh |= other.lh
         self.bc0 |= other.bc0
-        # self.bc1 |=
+        self.bc1 |= other.bc1
+        self.bc2 |= other.bc2
 
         self.global_coupler_kick = other.global_coupler_kick
 
@@ -906,8 +895,6 @@ class EuXFELController:
                 continue
 
             if self.ah1.match(element):
-                print("Turning off AH1?")
-                # from IPython import embed; embed()
                 self.ah1.apply(element)
                 continue
 
@@ -1121,7 +1108,9 @@ class SliceTwissCalculator(PhysProc):
 
 def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):
     # Put markers everywhere.
-    _, new_markers = insert_markers_by_predicate(navi.lat.sequence, lambda ele: True)
+    _, new_markers = insert_markers_by_predicate(navi.lat.sequence, lambda ele: True,
+                                                 before=False,
+                                                 after_suffix="")
 
     if opticscls is None:
         opticscls = TwissCalculator
@@ -1177,6 +1166,7 @@ def _extract_twiss_paramters_from_twiss_processes(twiss_processes):
     twiss_instances = []
     for proc in twiss_processes:
         twiss = proc.twiss
+        twiss.id = proc.name
         if twiss is None:
             continue
         twiss_instances.append(twiss)
