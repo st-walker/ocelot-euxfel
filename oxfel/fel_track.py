@@ -13,9 +13,10 @@ from copy import deepcopy
 import textwrap
 import re
 import pandas as pd
+from dataclasses import dataclass
+import functools
 
 import numpy as np
-
 from ocelot.cpbd.csr import CSR
 from ocelot.cpbd.beam import ParticleArray
 from ocelot.cpbd.physics_proc import PhysProc, SaveBeam
@@ -26,7 +27,9 @@ from ocelot.cpbd.magnetic_lattice import (
     insert_markers_by_predicate,
     flatten,
 )
-from ocelot.cpbd.transformations.second_order import SecondTM
+from ocelot.cpbd.beam import twiss_parray_slice
+
+from ocelot.cpbd.transformations.transfer_map import TransferMap
 from ocelot.cpbd.elements.optic_element import OpticElement
 from ocelot.cpbd.beam import twiss_iterable_to_df
 from ocelot.cpbd.optics import Twiss, twiss as oce_calc_twiss
@@ -40,7 +43,8 @@ LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.INFO)
 
 
-ElementAccessType = Optional[Union[int, str, OpticElement]]
+ElementT = TypeVar("ElementT", bound=OpticElement)
+ElementAccessType = Optional[Union[int, str, ElementT]]
 
 
 class TwissMismatchError(RuntimeError):
@@ -48,13 +52,13 @@ class TwissMismatchError(RuntimeError):
 
 
 class MachineSequence(Sequence):
-    def __init__(self, sequence: list[OpticElement], *args, **kwargs):
+    def __init__(self, sequence: list[ElementT], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._sequence = list(flatten(sequence))
 
     def __getitem__(
         self, key: ElementAccessType
-    ) -> Union[OpticElement, MachineSequence]:
+    ) -> Union[ElementT, MachineSequence]:
         if isinstance(key, slice):
             start, step, stop = key.start, key.step, key.stop
             if step is not None:
@@ -112,7 +116,7 @@ class MachineSequence(Sequence):
     def __len__(self) -> int:
         return len(self._sequence)
 
-    def __add__(self, other: Iterable[OpticElement]) -> MachineSequence:
+    def __add__(self, other: Iterable[ElementT]) -> MachineSequence:
         return type(self)(list(self) + list(flatten(other)))
 
     def __str__(self) -> str:
@@ -140,7 +144,7 @@ class MachineSequence(Sequence):
     def length(self) -> float:
         return sum(x.l for x in self)
 
-    def element_s(self, key: Union[str, OpticElement]) -> float:
+    def element_s(self, key: Union[str, ElementT]) -> float:
         indices = [i for (i, ele) in enumerate(self) if (ele.id == key) or (ele is key)]
 
         if not indices:
@@ -160,25 +164,13 @@ class MachineSequence(Sequence):
 
 
 class FELSection:
-    def __init__(self, outdir: os.Pathlike, *args, **kwargs):
-        self.outdir = Path(".")
-        self.physics_processes_array = []  # list of physics procs with start/stops
+    def __init__(self, sequence: MachineSequence):
+        self.sequence = MachineSequence(sequence)
+        self.physics_processes = []  # list of physics procs with start/stops
+        self.setup_physics()
 
-        self.particle_dir = self.outdir / "particles"
-        self.tws_dir = self.outdir / "tws_dir"
-        self.method = {"global": SecondTM}
-
-    @property
-    def outdir_particles(self) -> Path:
-        return self.outdir / "particles"
-
-    @property
-    def outdir_twiss(self) -> Path:
-        return self.outdir / "twiss"
-
-    @property
-    def output_parray1_file(self) -> Path:
-        return self.outdir_particles / f"section_{type(self).__name__}.npz"
+    def setup_physics(self):
+        pass
 
     def add_physics_process(self, physics_process, start, stop):
         if not isinstance(start, str) and start is not None:
@@ -186,19 +178,7 @@ class FELSection:
         if not isinstance(stop, str) and stop is not None:
             raise TypeError(f"{stop} should be a str, an element name, or None")
 
-        self.physics_processes_array.append([physics_process, start, stop])
-
-    def save_beam_file(self, parray: ParticleArray) -> None:
-        self.output_parray1_file.parent.mkdir(parents=True, exist_ok=True)
-        LOG.debug(f"Writing to: {self.output_parray1_file}")
-        save_particle_array(self.output_parray1_file, parray)
-
-    # def track(self, parray0, start=None, stop=None, felconfig=None):
-    #     navi = self.get_navigator(start=start, stop=stop, felconfig=felconfig)
-    #     _, parray1 = track.track(self.lattice, parray0, navi, print_progress=True, overwrite_progress=False)
-    #     self.save_beam_file(parray1)
-    #     self.post_track(parray1)
-    #     return parray1
+        self.physics_processes.append([physics_process, start, stop])
 
     def calculate_twiss(
         self,
@@ -216,7 +196,7 @@ class FELSection:
 
     def get_sequence(self, idstart=None, idstop=None, felconfig=None):
         if felconfig is not None:
-            return felconfig.modify_sequence(self.sequence)
+            return felconfig.new_sequence(self.sequence)
         else:
             return deepcopy(self.sequence)
 
@@ -240,7 +220,7 @@ class SectionedFEL:
         :param sequence: list of SectionTrack()
         """
         self.outdir = Path(outdir)
-        self.sections = [sec(self.outdir) for sec in sections]
+        self.sections = sections
         self.twiss0 = twiss0
         self.felconfig = felconfig if felconfig else None
 
@@ -431,8 +411,8 @@ class SectionedFEL:
 
         # Make the navigator
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
-        mlat = MagneticLattice(sequence, method={"global": SecondTM})
-        navi = Navigator(mlat, unit_step=felconfig.unit_step)
+        mlat = MagneticLattice(sequence, method={"global": felconfig.tracking.method})
+        navi = Navigator(mlat, unit_step=felconfig.tracking.unit_step)
 
         sequence_before = self._get_sequence_before_start(start)
         sequence_after = self._get_sequence_after_stop(stop)
@@ -447,7 +427,8 @@ class SectionedFEL:
                 process,
                 proc_start_name,
                 proc_stop_name,
-            ) in section.physics_processes_array:
+            ) in section.physics_processes:
+
                 assert isinstance(proc_start_name, str) or proc_start_name is None
                 assert isinstance(proc_stop_name, str) or proc_stop_name is None
 
@@ -457,15 +438,17 @@ class SectionedFEL:
                 if proc_stop_name is None:
                     proc_stop = None
 
+                if proc_start_name == proc_stop_name and process in sequence: # For occasion when you want to attach an element to the first
+                    pass
                 # If process stops before the sequene even begins, then skip.
-                if proc_stop_name in sequence_before:
+                elif proc_stop_name in sequence_before:
                     LOG.debug(
                         f"From Section {type(self).__name__} - Skipping {process}: start={proc_start_name}, stop={proc_stop_name}. Reason: Process precedes sequence"
                     )
                     continue
 
                 # If process doesn't even start until after the sequence ends, then skip
-                if proc_start_name in sequence_after:
+                elif proc_start_name in sequence_after:
                     LOG.debug(
                         f"From Section {type(self).__name__} - Skipping {process}: start={proc_start_name}, stop={proc_stop_name}. Reason: Process follows sequence"
                     )
@@ -490,9 +473,14 @@ class SectionedFEL:
 
                 navi.add_physics_proc(process, proc_start, proc_stop)
 
-                print(
-                    f"From Section {type(section).__name__} - Adding {process}: start={proc_start_name}, stop={proc_stop_name}"
+                # LOG.info(
+                #     f"From Section {type(section).__name__} - Adding {process}: start={proc_start_name}, stop={proc_stop_name}"
+                # )
+
+                LOG.info(
+                    f"From Section {type(section).__name__} - Adding {process}: start={proc_start_name}, stop={proc_stop_name}:"
                 )
+                LOG.info(repr(process))
 
         return navi
 
@@ -520,6 +508,9 @@ class SectionedFEL:
         stop_energy = machine_twiss.query(f"id == '{stop_name}'").iloc[0].E
         assert start_energy == stop_energy
         process.energy = start_energy
+
+    def _get_csr_process_sigma_min(self):
+        pass
 
     def get_sequence(
         self,
@@ -574,7 +565,7 @@ class SectionedFEL:
             raise ValueError(f"Stop position {stop} not found in sequence")
 
         net_felconfig = self._net_felconfig(felconfig2=felconfig)
-        return MachineSequence(net_felconfig.controller.modify_sequence(result))
+        return MachineSequence(net_felconfig.new_sequence(result))
 
     def length(self) -> float:
         x = 0
@@ -589,7 +580,7 @@ class SectionedFEL:
     def __getitem__(self, key: str) -> FELSection:
         return dict(zip(self.section_names, self.sections))[key]
 
-    def get_element(self, name: str) -> OpticElement:
+    def get_element(self, name: str) -> ElementT:
         for section in self.sections:
             for element in section.sequence:
                 if element.id == name:
@@ -622,10 +613,21 @@ class SectionedFEL:
         stop: ElementAccessType = None,
         felconfig: Optional[FELSimulationConfig] = None,
         physics=True,
+        match="projected",
         **match_beam_kwargs,
     ) -> FELSimulationConfig:
         # Make navigator from given start, stop and felconfig
         navi = self.to_navigator(start=start, stop=stop, felconfig=felconfig, physics=physics)
+
+        if match == "projected":
+            twiss_function = None
+        elif match.lower() == "emax":
+            twiss_function = partial.functools(_twiss_central_slice, match_slice="EMax")
+        elif match.lower() == "imax":
+            twiss_function = partial.functools(_twiss_central_slice, match_slice="IMax")
+        else:
+            raise ValueError(f"Unknown match string: {match}")
+
 
         # Update match_beam_kwargs with function **kwargs.
         match_beam_kwargs = {
@@ -635,6 +637,7 @@ class SectionedFEL:
             "min_i5": False,
             "bounds": None,
             "vary_bend_angle": False,
+            "tws_fn": twiss_function
         } | match_beam_kwargs
 
         # Turn ElementAccessType into Element instances, if they are
@@ -658,7 +661,7 @@ class SectionedFEL:
         # Apply the result to the simulation config.
         new_conf = deepcopy(self._net_felconfig(felconfig))
 
-        new_conf.controller.components = {
+        new_conf.components = {
             quad_name: {"k1": strength}
             for (quad_name, strength) in zip([x.id for x in elements], res)
         }
@@ -701,7 +704,7 @@ class SectionedFEL:
             for (quad_name, strength) in zip([x.id for x in elements], res)
         }
 
-        new_conf.controller.components.update(matched_strengths)
+        new_conf.components.update(matched_strengths)
 
         return new_conf
 
@@ -714,9 +717,18 @@ class SequenceController:
     def __init__(self, regex: str):
         self.regex = re.compile(regex)
 
-    def match(self, element: OpticElement) -> bool:
+    def match(self, element: ElementT) -> bool:
         return re.match(self.regex, element.id)
 
+class Controller:
+    def __init__(self, regex: str):
+        pass
+
+    def modify_element(self, element):
+        pass
+
+    def modify_subsequence(self, sequence):
+        pass
 
 class TDSControl(SequenceController):
     def __init__(
@@ -735,7 +747,7 @@ class TDSControl(SequenceController):
     def should_modify(self) -> bool:
         return not self.active or self.phi is not None or self.v is not None
 
-    def apply(self, element: OpticElement) -> None:
+    def apply(self, element: ElementT) -> None:
         if not self.should_modify:
             return
 
@@ -743,24 +755,23 @@ class TDSControl(SequenceController):
             self.disable(element)
             return
 
-        print(
+        LOG.debug(
             f"Applying Cavity control to element: {element}.  phi1 = {self.phi}, v1 = {self.v}"
         )
         if self.v is not None:
             element.v = self.v
         if self.phi is not None:
             element.phi = self.phi
-
-    def disable(self, element: OpticElement) -> None:
+    def disable(self, element: ElementT) -> None:
         element.phi = 0.0
         element.v = 0.0
-        print(
+        LOG.debug(
             f"Cavity control on element: {element}.  Disabling: {element.v=}, {element.phi=}"
         )
 
     def __repr__(self) -> str:
         tname = type(self).__name__
-        return f"<{tname}: phi={self.phi}, v={self.v}>"
+        return f"<{tname}: phi={self.phi}, v={self.v}, active={self.active}>"
 
     def __or__(self, other):
         result = deepcopy(self)
@@ -768,9 +779,9 @@ class TDSControl(SequenceController):
         return result
 
     def __ior__(self, other):
-        self.phi = other.phi
-        self.v = other.v
-        self.active = other.active
+        self.phi = _set_if_not_none(self.phi, other.phi)
+        self.v = _set_if_not_none(self.v, other.v)
+        self.active = _set_if_not_none(self.active, other.active)
         return self
 
 
@@ -786,7 +797,7 @@ class CavityControl(TDSControl):
         super().__init__(regex, phi=phi, v=v, active=active)
         self.coupler_kick = coupler_kick
 
-    def apply(self, element: OpticElement) -> None:
+    def apply(self, element: ElementT) -> None:
         super().apply(element)
 
         if not self.coupler_kick:
@@ -794,12 +805,15 @@ class CavityControl(TDSControl):
             element.remove_coupler_kick()
 
     def __ior__(self, other):
-        self.phi = other.phi
-        self.v = other.v
-        self.active = other.active
-        self.coupler_kick = other.coupler_kick
+        self.phi = _set_if_not_none(self.phi, other.phi)
+        self.v = _set_if_not_none(self.v, other.v)
+        self.active = _set_if_not_none(self.active, other.active)
+        self.coupler_kick = _set_if_not_none(self.coupler_kick, other.coupler_kick)
         return self
 
+
+def _set_if_not_none(value, other):
+    return value if other is None else other
 
 class SectionControl:
     def __init__(self, regex):
@@ -812,9 +826,13 @@ class SectionControl:
 class ChicaneControl(SectionControl):
     MAX_DIPOLES = 4
 
-    def __init__(self, regex, angle=None):
+    def __init__(self, regex, angle=None, r56=None):
         super().__init__(regex)
         self.angle = angle
+        self.r56 = r56
+
+        if angle and r56:
+            raise
 
     def _find_chicane_indices(self):
         chicane_indices = []
@@ -825,20 +843,80 @@ class ChicaneControl(SectionControl):
                 break
         return chicane_indices
 
-    def modify_sequence(self, sequence):
+    def should_modify(self):
+        return self.angle is not None or self.r56 is not None
+
+    def _get_new_angle(self, outer_length):
+        if self.r56 is not None:
+            angle = np.sqrt(-0.5 * self.r56 / projected_outer_length)
+        else:
+            angle = self.angle
+        assert angle is not None
+        return angle
+
+    def _get_outer_drift_projected_length(self):
         chicane_indices = self._find_chicane_indices(sequence)
 
+        # Two outer drifts of chicane that we need to modify
+        # could be multiple elements because of markers etc...
         first_drift = sequence[chicane_indices[0] + 1 : chicane_indices[1]]
-        # middle_drift = sequence[chicane_indices[1]:chicane_indices[2]]
-        last_drift = sequence[chicane_indices[2] + 1 : chicane_indices[3]]
+        third_drift = sequence[chicane_indices[2] + 1 : chicane_indices[3]]
+
+        first_drift_length = sum(x.l for x in first_drift)
+        third_drift_length = sum(x.l for x in third_drift)
+
+    def _get_projected_lengths_from_sequence(self, sequence):
+        first_drift = sequence[chicane_indices[0] + 1 : chicane_indices[1]]
+        second_drift = sequence[chicane_indices[1] + 1 : chicane_indices[2]]
+        third_drift = sequence[chicane_indices[2] + 1 : chicane_indices[3]]
+
+        first_drift_length = sum(x.l for x in first_drift)
+        second_drift_length = sum(x.l for x in second_drift)
+        third_drift_length = sum(x.l for x in third_drift)
+
+        assert first_drift == third_drift
+        return first_drift_length, second_drift_length, third_drift_length
+
+
+    def _update_angles(self, chicane_indices):
+        angle = self._get_new_angle()
+
+    def _update_drifts(self, chicane_indices):
+        # Two outer drifts of chicane that we need to modify
+        # could be multiple elements because of markers etc...
+        first_drift = sequence[chicane_indices[0] + 1 : chicane_indices[1]]
+        third_drift = sequence[chicane_indices[2] + 1 : chicane_indices[3]]
+
+        first_drift_length = sum(x.l for x in first_drift)
+        third_drift_length = sum(x.l for x in third_drift)
+
+        assert first_drift_length == third_drift_length
+
+        angle = dipole1.angle
+
+        projected_length = first_drift_length * np.cos(angle)
+
+        new_drift_length = projected_length / np.cos(angle)
+
+        ratio = new_drift_length / first_drift_length
+
+        # finally update lengths.
+        for element in first_drift + second_drift:
+            element.l *= ratio
+
+    def modify_sequence(self, sequence):
+        chicane_indices = self._find_chicane_indices(sequence)
+        self._update_drifts(sequence, chicane_indices)
+        self._update_angles(sequence, chicane_indices)
+
 
     def __ior__(self, other):
-        self.angle = other.angle
+        self.angle = _set_if_not_none(self.angle, other.angle)
         return self
 
-class EuXFELController:
-    def __init__(self, components: dict = None):
-        self.components = components if components is not None else {}
+class EuXFELHighLevelController:
+    def __init__(self):
+        self._components = {}
         self.tds1 = TDSControl(regex=r"TDSA\.52\.I1")
         self.tds2 = TDSControl(regex=r"TDSB\.(428|430)\.B2")
         self.a1 = CavityControl(r"C\.A1\.1\.[0-8].I1")
@@ -853,8 +931,6 @@ class EuXFELController:
         self.global_coupler_kick = None
 
     def __ior__(self, other) -> FELSimulationConfig:
-        self.components |= other.components
-
         self.tds1 |= other.tds1
         self.tds2 |= other.tds2
         self.a1 |= other.a1
@@ -875,7 +951,7 @@ class EuXFELController:
         result |= other
         return result
 
-    def modify_sequence(self, sequence: Iterable[OpticElement]) -> MachineSequence:
+    def new_sequence(self, sequence: Iterable[ElementT]) -> MachineSequence:
         """Given an EuXFEL sequence, modify it based on the
         configuration of this EuXFELController instance."""
         new_sequence = deepcopy(sequence)
@@ -906,12 +982,35 @@ class EuXFELController:
                 self.a3.apply(element)
                 continue
 
-        new_sequence = self.apply_magnet_conf_to_sequence(new_sequence)
+        if self.lh.should_modify():
+            self.lh.modify_sequence(sequence)
 
         return MachineSequence(new_sequence)
 
+class FELSimulationConfig:
+    def __init__(
+            self,
+            metadata: Optional[dict] = None,
+            coupler_kick: bool = False,
+            controller: Optional[EuXFELHighLevelController] = None,
+            components: Optional[dict[str, dict[str, Any]]] = None,
+            tracking: Optional[TrackingConfiguration] = None
+    ):
+        self.metadata = metadata if metadata else {}
+        self.coupler_kick = False
+
+        self.components = components if components else {}
+        self.controller = controller if controller else EuXFELHighLevelController()
+
+        self.tracking = tracking if tracking else TrackingConfiguration()
+
+    def new_sequence(self, sequence):
+        new_sequence = self.controller.new_sequence(sequence)
+        new_sequence = self.apply_magnet_conf_to_sequence(new_sequence)
+        return new_sequence
+
     def apply_magnet_conf_to_sequence(
-        self, sequence: Iterable[OpticElement]
+        self, sequence: Iterable[ElementT]
     ) -> MachineSequence:
         sequence = deepcopy(sequence)
         magnet_conf = self.components
@@ -919,25 +1018,14 @@ class EuXFELController:
             name = element.id
             if name in magnet_conf:
                 for key, value in magnet_conf[name].items():
-                    print(f"Setting: {name}->{key} to {value}")
+                    LOG.debug(f"Setting: {name}->{key} to {value}")
+                    previous = getattr(element, key)
+                    if np.isclose(previous, value):
+                        print(element)
                     setattr(element, key, value)
 
         return MachineSequence(sequence)
 
-
-class FELSimulationConfig:
-    def __init__(
-        self,
-        metadata: Optional[dict] = None,
-        coupler_kick: bool = False,
-        controller: Optional[EuXFELController] = None,
-    ):
-        self.metadata = metadata if metadata is not None else {}
-        self.coupler_kick = False
-
-        self.controller = EuXFELController() if controller is None else controller
-
-        self.unit_step = 0.02
 
     def __str__(self) -> str:
         return textwrap.dedent(
@@ -952,7 +1040,7 @@ class FELSimulationConfig:
         self.metadata |= other.metadata
         self.controller |= other.controller
         self.coupler_kick = other.coupler_kick
-        self.unit_step = other.unit_step
+        self.components |= other.components
         return self
 
     def __or__(self, other):
@@ -960,92 +1048,74 @@ class FELSimulationConfig:
         result |= other
         return result
 
-    # def bc_analysis(self):
-    #     # find positions
-    #     L = 0.
-    #     for elem in self.sequence:
+    def get_bc_shoulders(self):
+        self.left_shoulder = []
+        self.right_shoulder = []
+        left_flag = False
+        right_flag = False
+        for i, elem in enumerate(self.sequence):
+            if elem == self.dipoles[0]:
+                left_flag = True
+            elif elem == self.dipoles[1]:
+                left_flag = False
 
-    #         if elem in self.dipoles:
-    #             elem.s_pos = L
-    #         L += elem.l
-    #     self.dipoles = np.array(self.dipoles)
-    #     # sorting - put dipoles in right order
-    #     sort_index = np.argsort(np.array([d.s_pos for d in self.dipoles]))
-    #     #print(sort_index)
-    #     self.dipoles = self.dipoles[sort_index]
+            if elem == self.dipoles[2]:
+                right_flag = True
+            elif elem == self.dipoles[3]:
+                right_flag = False
 
-    #     #self.bc_gap = self.dipoles[2].s_pos - self.dipoles[1].s_pos - self.dipoles[1].l
-    #     #print("bc_gap", self.bc_gap)
-    #     self.get_bc_shoulders()
+            if left_flag and elem != self.dipoles[0]:
+                self.sequence[i] = copy.deepcopy(elem)
+                self.left_shoulder.append(self.sequence[i])
+            if right_flag and elem != self.dipoles[2]:
+                self.sequence[i] = copy.deepcopy(elem)
+                self.right_shoulder.append(self.sequence[i])
 
-    # def get_bc_shoulders(self):
-    #     self.left_shoulder = []
-    #     self.right_shoulder = []
-    #     left_flag = False
-    #     right_flag = False
-    #     for i, elem in enumerate(self.sequence):
-    #         if elem == self.dipoles[0]:
-    #             left_flag = True
-    #         elif elem == self.dipoles[1]:
-    #             left_flag = False
+        self.bc_gap_left = np.sum([d.l for d in self.left_shoulder])
+        right_len = np.sum([d.l for d in self.right_shoulder])
 
-    #         if elem == self.dipoles[2]:
-    #             right_flag = True
-    #         elif elem == self.dipoles[3]:
-    #             right_flag = False
+        for d in self.left_shoulder:
+            d.len_coef = d.l / self.bc_gap_left
+        for d in self.right_shoulder:
+            d.len_coef = d.l / right_len
 
-    #         if left_flag and elem != self.dipoles[0]:
-    #             self.sequence[i] = copy.deepcopy(elem)
-    #             self.left_shoulder.append(self.sequence[i])
-    #         if right_flag and elem != self.dipoles[2]:
-    #             self.sequence[i] = copy.deepcopy(elem)
-    #             self.right_shoulder.append(self.sequence[i])
+    def change_bc_shoulders(self, drift):
+        for d in self.left_shoulder:
+            d.l = drift * d.len_coef
 
-    #     self.bc_gap_left = np.sum([d.l for d in self.left_shoulder])
-    #     right_len = np.sum([d.l for d in self.right_shoulder])
+        for d in self.right_shoulder:
+            d.l = drift * d.len_coef
 
-    #     for d in self.left_shoulder:
-    #         d.len_coef = d.l / self.bc_gap_left
-    #     for d in self.right_shoulder:
-    #         d.len_coef = d.l / right_len
+    def update_bunch_compressor(self, rho):
+        if self.dipoles is None:
+            print(self.__class__.__name__ + " No BC")
+            return
 
-    # def change_bc_shoulders(self, drift):
-    #     for d in self.left_shoulder:
-    #         d.l = drift * d.len_coef
+        self.bc_analysis()
 
-    #     for d in self.right_shoulder:
-    #         d.l = drift * d.len_coef
+        if self.dipole_len is None:
+            self.dipole_len = copy.copy(self.dipoles[0].l)
 
-    # def update_bunch_compressor(self, rho):
-    #     if self.dipoles is None:
-    #         print(self.__class__.__name__ + " No BC")
-    #         return
+        if rho == 0:
+            angle = 0
+            ds = self.dipole_len
+        else:
+            angle = np.arcsin(self.dipole_len / rho)
+            ds = angle * rho
 
-    #     self.bc_analysis()
+        if self.bc_gap is None:
+            self.bc_gap = self.bc_gap_left*np.cos(self.dipoles[0].angle)
 
-    #     if self.dipole_len is None:
-    #         self.dipole_len = copy.copy(self.dipoles[0].l)
-
-    #     if rho == 0:
-    #         angle = 0
-    #         ds = self.dipole_len
-    #     else:
-    #         angle = np.arcsin(self.dipole_len / rho)
-    #         ds = angle * rho
-
-    #     if self.bc_gap is None:
-    #         self.bc_gap = self.bc_gap_left*np.cos(self.dipoles[0].angle)
-
-    #     drift = self.bc_gap / np.cos(angle)
-    #     self.change_bc_shoulders(drift)
-    #     # d.l=drift
-    #     for i, dip in enumerate(self.dipoles):
-    #         dip.angle = angle * np.sign(dip.angle)
-    #         dip.l = ds
-    #         if i in [0, 2]:
-    #             dip.e2 = angle * np.sign(dip.angle)
-    #         else:
-    #             dip.e1 = angle * np.sign(dip.angle)
+        drift = self.bc_gap / np.cos(angle)
+        self.change_bc_shoulders(drift)
+        # d.l=drift
+        for i, dip in enumerate(self.dipoles):
+            dip.angle = angle * np.sign(dip.angle)
+            dip.l = ds
+            if i in [0, 2]:
+                dip.e2 = angle * np.sign(dip.angle)
+            else:
+                dip.e1 = angle * np.sign(dip.angle)
 
 
 class NoTwiss(PhysProc):
@@ -1088,13 +1158,6 @@ class SliceTwissCalculator(PhysProc):
         self.twiss = None
 
     def apply(self, parray, dz):
-        # mean, cov = moments_from_parray(parray)
-        # self.twiss = optics_from_moments(mean, cov, parray.E)
-        # self.twiss.s = parray.s
-        # self.twiss.id = sel
-        # print("!!!!!!!!!!!!!!!!!!!!!!!!", self.name)
-        # if self.name == "MATCH.428.B2_after":
-
         self.twiss = twiss_parray_slice(
             parray,
             slice="Emax",
@@ -1105,6 +1168,9 @@ class SliceTwissCalculator(PhysProc):
         )
         self.twiss.s = float(parray.s)
 
+
+def _twiss_central_slice(parray, match_slice="Imax", **kwargs):
+    return twiss_parray_slice(parray, match_slice=match_slice, **kwargs)
 
 def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):
     # Put markers everywhere.
@@ -1166,9 +1232,9 @@ def _extract_twiss_paramters_from_twiss_processes(twiss_processes):
     twiss_instances = []
     for proc in twiss_processes:
         twiss = proc.twiss
-        twiss.id = proc.name
         if twiss is None:
             continue
+        twiss.id = proc.name
         twiss_instances.append(twiss)
     twiss_instances.sort(key=lambda tws: tws.s)
 
@@ -1186,12 +1252,10 @@ def _get_element_instances_from_mlat(mlat, names):
     indices = mlat.find_indices_by_predicate(f)
     return [mlat.sequence[i] for i in indices]
 
+# class PhysicsConfiguration:
+#     processes: list
 
-# def _get_element_instance_from_mlat(mlat, name):
-#     def f(ele):
-#         return ele.id in names
-#     indices = mlat.find_indices_by_predicate(f)
-#     assert len(indices
-#     return mlat.sequence[i]
-
-# def print_real_match_points_twiss(df):
+@dataclass
+class TrackingConfiguration:
+    unit_step: float = 0.02
+    method: Transformation = TransferMap

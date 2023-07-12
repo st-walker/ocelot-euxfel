@@ -76,3 +76,11 @@ class XFELLongList:
 
     def focussing_settings(self):
         return self.cavity_settings() | self.quadrupole_k1s() | self.chicane_settings()
+
+    def get_optics_constraint(self, name1) -> dict[str: dict[str, float]]:
+        row = self[name1]
+        return {name1: {"beta_x": row.BETX,
+                        "beta_y": row.BETY,
+                        "alpha_x": row.ALFX,
+                        "alpha_y": row.ALFY}}
+

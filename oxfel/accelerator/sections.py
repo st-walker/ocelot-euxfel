@@ -111,41 +111,42 @@ def make_csr(*, sigma_min, traj_step, apply_step, n_bin=None, step=None):
 
 
 
-
 class G1(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-        self.lattice = MagneticLattice(i1.cell, stop=i1.stop_astra)
-        self.sequence = MachineSequence(self.lattice.sequence)
+    def __init__(self):
+        lattice = MagneticLattice(i1.cell, stop=i1.stop_astra)
+        sequence = MachineSequence(lattice.sequence)
+        super().__init__(sequence)
 
 class A1(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-        # setting parameters
-        self.lattice_name = 'A1'
-        self.unit_step = 0.02
-        self.input_beam_file = Path(self.particle_dir) / 'Exfel.0320.ast'
-        self.output_beam_file = Path(self.particle_dir) / 'section_A1.npz'
-        self.tws_file = Path(self.tws_dir) / "tws_section_A1.npz"
-        # init tracking lattice
+    def __init__(self):
         start_sim = i1.start_ocelot
         acc1_stop = i1.a1_sim_stop
-        self.lattice = MagneticLattice(i1.cell, start=start_sim,stop=acc1_stop, method=self.method)
+        lattice = MagneticLattice(i1.cell, start=start_sim, stop=acc1_stop)
+        sequence = MachineSequence(lattice.sequence)
+        super().__init__(sequence)
+
+    def setup_physics(self):
+        start_sim = i1.start_ocelot
+        acc1_stop = i1.a1_sim_stop
+
         # init physics processes
         sc = SpaceCharge()
         sc.step = 1
         sc.nmesh_xyz = SCmesh
         sc.random_mesh = bRandomMesh
+
         sc2 = SpaceCharge()
         sc2.step = 1
         sc2.nmesh_xyz = SCmesh
         sc2.random_mesh = bRandomMesh
+
         wake = Wake()
         wake.wake_table = WakeTable(WAKES_PATH / 'RF/wake_table_A1.dat')
         wake.factor = 1
         wake.step = 10
         wake.w_sampling = WakeSampling
         wake.filter_order = WakeFilterOrder
+
         smooth = SmoothBeam()
         smooth.mslice = SmoothPar
         # adding physics processes
@@ -154,23 +155,19 @@ class A1(FELSection):
         self.add_physics_process(sc, start=start_sim.id, stop=acc1_1_stop.id)
         self.add_physics_process(sc2, start=acc1_1_stop.id, stop=acc1_stop.id)
         self.add_physics_process(wake, start=i1.c_a1_1_1_i1.id, stop=acc1_stop.id)
-
-        self.sequence = MachineSequence(self.lattice.sequence)
+    
 
 
 class AH1(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-        # setting parameters
-        self.lattice_name = 'Injector AH1'
-        self.unit_step = 0.02
-        self.input_beam_file = self.particle_dir / 'section_A1.npz'
-        self.output_beam_file = self.particle_dir / 'section_AH1.npz'
-        self.tws_file = self.tws_dir / "tws_section_AH1.npz"
-        # init tracking lattice
+    def __init__(self):
         ah1_start = i1.ah1_sim_start
         acc39_stop = i1.stlat_47_i1
-        self.lattice = MagneticLattice(i1.cell, start=ah1_start, stop=acc39_stop, method=self.method)
+        lattice = MagneticLattice(i1.cell, start=ah1_start, stop=acc39_stop)
+        super().__init__(lattice.sequence)
+
+    def setup_physics(self):
+        ah1_start = i1.ah1_sim_start
+        acc39_stop = i1.stlat_47_i1
         # init physics processes
         sc = SpaceCharge()
         sc.step = 5
@@ -186,24 +183,16 @@ class AH1(FELSection):
         self.add_physics_process(sc, start=ah1_start.id, stop=acc39_stop.id)
         self.add_physics_process(wake, start=i1.c3_ah1_1_1_i1.id, stop= acc39_stop.id)
 
-        self.sequence = MachineSequence(self.lattice.sequence)        
-
 class LH(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-        # setting parameters
-        self.lattice_name = 'LASER HEATER MAGNETS'
-        self.unit_step = 0.02
-        self.input_beam_file = self.particle_dir / 'section_AH1.npz'
-        self.output_beam_file = self.particle_dir / 'section_LH.npz'
-        self.tws_file = self.tws_dir / "tws_section_LH.npz"
-        # init tracking lattice
+    def __init__(self):
         acc39_stop = i1.stlat_47_i1
-        #lhm_stop = l1.id_90904668_ #for s2e
-        #lhm_stop = l1.cix_65_i1    #approx. corresponds to the position of the screen in I1D.
         lhm_stop = i1.dump_csr_start #for going in I1D
-        self.lattice = MagneticLattice(i1.cell + l1.cell, start=acc39_stop, stop=lhm_stop, method=self.method)
-        # init physics processes
+        lattice = MagneticLattice(i1.cell + l1.cell, start=acc39_stop, stop=lhm_stop)
+        super().__init__(lattice.sequence)
+
+    def setup_physics(self):
+        acc39_stop = i1.stlat_47_i1
+        lhm_stop = i1.dump_csr_start #for going in I1D
         csr = CSR()
         # csr.sigma_min = Sig_Z[0] * CSRSigmaFactor
         csr.sigma_min = Sig_Z * CSRSigmaFactor        
@@ -227,73 +216,23 @@ class LH(FELSection):
         lh.sigma_y = 300e-6
         lh.z_waist = None
 
-
-        # filename_tds1 = self.particle_dir / "tds1.npz"
-        # filename_tds2 = self.particle_dir / "tds2.npz"
-        # filename_tds3 = self.particle_dir / "tds3.npz"
-        # if "suffix" in kwargs:
-        #     filename, file_extension = os.path.splitext(filename_tds1)
-        #     filename_tds1 = filename + str(kwargs["suffix"]) + file_extension
-        #     filename, file_extension = os.path.splitext(filename_tds2)
-        #     filename_tds2 = filename + str(kwargs["suffix"]) + file_extension
-        #     filename, file_extension = os.path.splitext(filename_tds3)
-        #     filename_tds3 = filename + str(kwargs["suffix"]) + file_extension
-
-
-        # sv_tds1 = SaveBeam(filename=filename_tds1)
-        # sv_tds2 = SaveBeam(filename=filename_tds2)
-        # sv_tds3 = SaveBeam(filename=filename_tds3)
-
-
-        # tws_52 = Twiss()
-        # tws_52.beta_x = 3.131695851
-        # tws_52.beta_y = 5.417462794
-        # tws_52.alpha_x = -0.9249364470
-        # tws_52.alpha_y = 1.730107901
-        # tws_52.gamma_x = (1 + tws_52.alpha_x ** 2) / tws_52.beta_x
-
-        # tr = BeamTransform(tws=tws_52)
-        #tr.bounds = [-0.5, 0.5]
-        # tr.slice = "Emax"
-
         self.add_physics_process(sc, start=acc39_stop.id, stop=lhm_stop.id)
-        self.add_physics_process(csr, start=acc39_stop.id, stop=lhm_stop.id)
-        self.add_physics_process(wake, start=acc39_stop.id, stop=lhm_stop.id)
-        # self.add_physics_process(sv_tds1, start=i1.tds1.id, stop=i1.tds1.id)
-        #self.add_physics_process(sv_tds2, start=i1.tds2, stop=i1.tds2)
-        #self.add_physics_process(sv_tds3, start=i1.tds3, stop=i1.tds3)
-        # self.add_physics_process(tr, i1.tmp_m.id, i1.tmp_m.id)
-
-
-        self.sequence = MachineSequence(self.lattice.sequence)        
+        # self.add_physics_process(csr, start=acc39_stop.id, stop=lhm_stop.id)
+        # self.add_physics_process(wake, start=acc39_stop.id, stop=lhm_stop.id)
 
 
 class I1D_Screen(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-        # setting parameters
-        self.lattice_name = 'I1 DUMP'
-        self.unit_step = 0.02
-        self.input_beam_file = self.particle_dir / 'section_LH.npz'
-        self.output_beam_file = self.particle_dir / 'section_I1D.npz'
-        self.tws_file = self.tws_dir / "tws_section_I1D.npz"
-
-        # filename_dump = self.particle_dir / "dump.npz"
-        # if "suffix" in kwargs:
-        #     filename, file_extension = os.path.splitext(self.output_beam_file)
-        #     self.output_beam_file = filename + str(kwargs["suffix"]) + file_extension
-        #     filename, file_extension = os.path.splitext(self.tws_file)
-        #     self.tws_file = filename + str(kwargs["suffix"]) + file_extension
-        #     filename, file_extension = os.path.splitext(filename_dump)
-        #     filename_dump = filename + str(kwargs["suffix"]) + file_extension
-
-        # sv_dump = SaveBeam(filename=filename_dump)
+    def __init__(self):
         # init tracking lattice
         i1d_start = i1.dump_csr_start
         i1d_stop = i1d.otrc_64_i1d
-        #i1d_stop = i1d.stsec_62_i1d
-        # self.lattice = MagneticLattice(i1.cell + i1d.cell, start=i1d_start.id, stop=i1d_stop.id, method=self.method)
-        self.lattice = MagneticLattice(i1.cell + i1d.cell, start=i1d_start.id, method=self.method)
+        lattice = MagneticLattice(i1.cell + i1d.cell, start=i1d_start.id)
+        super().__init__(lattice.sequence)
+        
+    def setup_physics(self):
+        i1d_start = i1.dump_csr_start
+        i1d_stop = i1d.otrc_64_i1d
+        # init tracking lattice
         # init physics processes
         sigma = Sig_Z
         csr = CSR()
@@ -310,22 +249,17 @@ class I1D_Screen(FELSection):
         self.add_physics_process(csr, start=i1d_start.id, stop=i1d.bpma_63_i1d.id)
         # self.add_physics_process(sv_dump, start=i1d_start.id, stop=i1d_start.id)
 
-        self.sequence = MachineSequence(self.lattice.sequence)        
-
-
-
 class DL(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-
+    def __init__(self):
         cell = MachineSequence(i1.cell + l1.cell)
-
-        # End of LH (so start of DL...).  This is just before the dump dipole to I1D.
-
-        # lh_stop_dl_start = "dogleg_start"
         lh_stop_dl_start = i1.dump_csr_start.id # "dogleg_start"        
         dogleg_stop = "dogleg_stop_bc0_start"
-        self.sequence = cell[lh_stop_dl_start:dogleg_stop]
+        sequence = cell[lh_stop_dl_start:dogleg_stop]
+        super().__init__(sequence)
+        
+    def setup_physics(self):
+        lh_stop_dl_start = i1.dump_csr_start.id # "dogleg_start"        
+        dogleg_stop = "dogleg_stop_bc0_start"
 
         csr = make_csr(sigma_min=Sig_Z * CSR_SIGMA_FACTOR, traj_step=0.0005, apply_step=0.005, n_bin=CSR_N_BIN)
         wake = make_wake(
@@ -341,54 +275,19 @@ class DL(FELSection):
         self.add_physics_process(wake, start=dogleg_stop, stop=dogleg_stop)
 
 
-# class DL(FELSection):
-#     def __init__(self, data_dir, *args, **kwargs):
-#         super().__init__(data_dir)
-#         # setting parameters
-#         self.lattice_name = 'DOGLEG'
-#         self.unit_step = 0.02
-#         self.input_beam_file = self.particle_dir / 'section_LH.npz'
-#         self.output_beam_file = self.particle_dir / 'section_DL.npz'
-#         self.tws_file = self.tws_dir / "tws_section_DL.npz"
-#         # init tracking lattice
-#         #st2_stop = l1.id_90904668_
-#         st2_stop = l1.cix_65_i1
-#         dogleg_stop = l1.stlat_96_i1
-#         self.lattice = MagneticLattice(i1.cell + l1.cell, start=st2_stop, stop=dogleg_stop, method=self.method)
-#         # init physics processes
-#         csr = CSR()
-#         csr.n_bin = CSRBin
-#         csr.sigma_min = Sig_Z[0]*CSRSigmaFactor
-#         csr.traj_step = 0.0005
-#         csr.apply_step = 0.005
-#         wake_add = Wake()
-#         wake_add.wake_table = WakeTable(WAKES_PATH / 'mod_wake_0070.030_0073.450_MONO.dat')
-#         wake_add.factor = 1
-#         wake_add.w_sampling = WakeSampling
-#         wake_add.filter_order = WakeFilterOrder
-
-#         sc = SpaceCharge()
-#         sc.step = 25
-#         sc.nmesh_xyz = SCmesh
-#         sc.random_mesh = bRandomMesh
-#         self.add_physics_process(csr, start=st2_stop, stop=dogleg_stop)
-#         self.add_physics_process(sc, start=st2_stop, stop=dogleg_stop)
-#         self.add_physics_process(wake_add, start=dogleg_stop, stop=dogleg_stop)
-
 
 class BC0(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-        # setting parameters
-        self.lattice_name = 'BC0'
-        self.unit_step = 0.02
-
+    def __init__(self):
         l1_cell = MachineSequence(l1.cell)
-
         dogleg_stop_bc0_start = "dogleg_stop_bc0_start"
         bc0_stop_l1_start= "bc0_stop_l1_start"
 
-        self.sequence = l1_cell[dogleg_stop_bc0_start:bc0_stop_l1_start]
+        sequence = l1_cell[dogleg_stop_bc0_start:bc0_stop_l1_start]
+        super().__init__(sequence)
+
+    def setup_physics(self):
+        dogleg_stop_bc0_start = "dogleg_stop_bc0_start"
+        bc0_stop_l1_start= "bc0_stop_l1_start"
 
         csr = make_csr(
             step=1, n_bin=CSR_N_BIN, sigma_min=Sig_Z * CSR_SIGMA_FACTOR, traj_step=0.0005, apply_step=0.001
@@ -436,16 +335,21 @@ class BC0(FELSection):
 #         self.bc_gap=1.0
 
 class L1(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-
+    def __init__(self):
         l1_cell = MachineSequence(l1.cell)
         # Just after end of BC0
         bc0_stop_l1_start= "bc0_stop_l1_start"
         # This is just before the start of BC1.
         a2_stop_bc1_start = "l1_stop_bc1_start"
 
-        self.sequence = l1_cell[bc0_stop_l1_start:a2_stop_bc1_start]
+        sequence = l1_cell[bc0_stop_l1_start:a2_stop_bc1_start]
+        super().__init__(sequence)
+
+    def setup_physics(self):
+        # Just after end of BC0
+        bc0_stop_l1_start= "bc0_stop_l1_start"
+        # This is just before the start of BC1.
+        a2_stop_bc1_start = "l1_stop_bc1_start"
 
         sc = make_space_charge(step=50, nmesh_xyz=SC_MESH, random_mesh=SC_RANDOM_MESH)
         wake = make_wake(
@@ -512,14 +416,18 @@ class L1(FELSection):
 
 
 class BC1(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
+    def __init__(self):
         l1_cell = MachineSequence(l1.cell)
-
         a2_stop_bc1_start = "l1_stop_bc1_start"
         bc1_stop_l2_start = "bc1_stop_l2_start"
                    
-        self.sequence = l1_cell[a2_stop_bc1_start:bc1_stop_l2_start]
+        sequence = l1_cell[a2_stop_bc1_start:bc1_stop_l2_start]
+
+        super().__init__(sequence)        
+
+    def setup_physics(self):
+        a2_stop_bc1_start = "l1_stop_bc1_start"
+        bc1_stop_l2_start = "bc1_stop_l2_start"
 
         # init physics processes
         csr = make_csr(
@@ -574,22 +482,16 @@ class BC1(FELSection):
 #         self.bc_gap=8.5
 
 class L2(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-        self.unit_step = 0.02
-
+    def __init__(self):
         cell = MachineSequence(l1.cell + l2.cell)
-
         bc1_stop_l2_start = "bc1_stop_l2_start"
         l2_stop_bc2_start = "l2_stop_bc2_start"
-        
-        # bc1_stop = "BC1-L2 interface: not long after the last BC1 chicane dipole"
-        # # Just before BC2
-        # l2_stop_bc2_start = "L2-BC2 interface: some way after the last L2 cavity"
+        sequence = cell[bc1_stop_l2_start:l2_stop_bc2_start]
+        super().__init__(sequence)
 
-        # init tracking lattice
-        self.sequence = cell[bc1_stop_l2_start:l2_stop_bc2_start]
-
+    def setup_physics(self):
+        bc1_stop_l2_start = "bc1_stop_l2_start"
+        l2_stop_bc2_start = "l2_stop_bc2_start"
         sc = make_space_charge(step=100, nmesh_xyz=SC_MESH, random_mesh=SC_RANDOM_MESH)
         wake = make_wake(WAKES_PATH / "RF/mod_TESLA_MODULE_WAKE_TAYLOR.dat", factor=4 * 3, step=200)
         wake2 = make_wake(WAKES_PATH / "mod_wake_0179.810_0370.840_MONO.dat", factor=1)
@@ -643,15 +545,18 @@ class L2(FELSection):
 #         self.add_physics_process(wake_add, start=acc3t5_stop, stop=acc3t5_stop)
 
 class BC2(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-
+    def __init__(self):
         l2_cell = MachineSequence(l2.cell)
 
         l2_stop_bc2_start = "l2_stop_bc2_start"
         bc2_stop_b2d_start = "bc2_stop_b2d_start"
         # init tracking lattice
-        self.sequence = l2_cell[l2_stop_bc2_start:bc2_stop_b2d_start]
+        sequence = l2_cell[l2_stop_bc2_start:bc2_stop_b2d_start]
+        super().__init__(sequence)
+
+    def setup_physics(self):
+        l2_stop_bc2_start = "l2_stop_bc2_start"
+        bc2_stop_b2d_start = "bc2_stop_b2d_start"
 
         csr = make_csr(
             step=1, n_bin=CSR_N_BIN, sigma_min=Sig_Z * CSR_SIGMA_FACTOR, traj_step=0.0005, apply_step=0.001
@@ -704,15 +609,15 @@ class BC2(FELSection):
 
 
 class B2D(FELSection):
-    def __init__(self, data_dir, *args, **kwargs):
-        super().__init__(data_dir)
-        self.unit_step = 0.02
-
+    def __init__(self):
         cell = MachineSequence(l2.cell + b2d.cell)
 
         bc2_stop_b2d_start = "bc2_stop_b2d_start"
-        self.sequence = cell[bc2_stop_b2d_start:]
+        sequence = cell[bc2_stop_b2d_start:]
+        super().__init__(sequence)
 
+    def setup_physics(self):
+        bc2_stop_b2d_start = "bc2_stop_b2d_start"
         csr = make_csr(
             step=1, n_bin=CSR_N_BIN, sigma_min=Sig_Z * CSR_SIGMA_FACTOR, traj_step=0.0005, apply_step=0.001
         )

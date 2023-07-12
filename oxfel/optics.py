@@ -1,9 +1,21 @@
 from .longlist import make_default_longlist
 import numpy as np
 
+INJECTOR_MATCHING_QUAD_NAMES: list[str] = ["Q.37.I1", "Q.38.I1", "QI.46.I1", "QI.47.I1", "QI.50.I1"]
+MATCH_TDS_B2_QUADRUPOLES: list[str] = ['Q.333.L2', 'Q.345.L2', 'Q.357.L2', 'Q.369.L2', 'Q.381.L2']
 
-FIXED_MATCH_POINTS = [
-    "MATCH.52.I1",
+#
+MATCH_37: str = "MATCH.37.I1"
+MATCH_52: str = "MATCH.52.I1"
+
+
+
+# Not a tru "fixed" point, just in front of the TDS2
+MATCH_428: str = "MATCH.428.B2"
+
+
+FIXED_MATCH_POINTS: list[str] = [
+    MATCH_52,
     "MATCH.73.I1",
     "MATCH.104.I1",
     "MATCH.218.B1",
@@ -66,13 +78,30 @@ def print_match_point_analysis(twiss_df, additional_names=None):
     # Calculate relative difference
     comparison = twiss_match.copy()[_OCELOT_TWISS_NAMES]
     # comparison = comparison[_OCELOT_OPTICS_NAMES] - twiss_match_reference[_OCELOT_OPTICS_NAMES]
-    comparison[_OCELOT_OPTICS_NAMES] = 100 * np.abs((twiss_match[_OCELOT_OPTICS_NAMES] - twiss_match_reference[_OCELOT_OPTICS_NAMES])
-                                        / twiss_match_reference[_OCELOT_OPTICS_NAMES])
-    comparison = comparison.dropna()
+    # comparison[_OCELOT_OPTICS_NAMES] = 100 * np.abs((twiss_match[_OCELOT_OPTICS_NAMES] - twiss_match_reference[_OCELOT_OPTICS_NAMES])
+    #                                     / twiss_match_reference[_OCELOT_OPTICS_NAMES])
+    # comparison = comparison.dropna()
 
-    print("\nRelative errors (%) with respect to the design MATCH settings:")
-    print(comparison)
-    print("\n")
+    # use id as index here so that the correct rows are used with each other.
+    twiss_match = twiss_match.set_index("id")
+    twiss_match_reference = twiss_match_reference.set_index("id")
+
+    bmag_x = bmag(twiss_match.beta_x, twiss_match.alpha_x, twiss_match_reference.beta_x, twiss_match_reference.alpha_x)
+    bmag_y = bmag(twiss_match.beta_y, twiss_match.alpha_y, twiss_match_reference.beta_y, twiss_match_reference.alpha_y)
+
+    twiss_match["bmag_x"] = bmag_x
+    twiss_match["bmag_y"] = bmag_y
+
+
+    # bmagx = bmag_x.reset_index().dropna()
+    # bmagy = bmag_y.reset_index().dropna()
+
+
+    # from IPython import embed; embed()
+
+    # print("\nRelative errors (%) with respect to the design MATCH settings:")
+    # print(comparison)
+    # print("\n")
 
 
 def read_mad8(fname):
@@ -89,3 +118,11 @@ def read_mad8(fname):
     df8["NAME1"] = name1s
 
     return _normalise_twiss_df(df8)
+
+def bmag(beta, alpha, beta_design, alpha_design):
+    bmag = 0.5 * ((beta / beta_design + beta_design / beta)
+                  + (beta * beta_design
+                     * ((alpha_design / beta_design)
+                        - (alpha / beta))**2))
+    # from IPython import embed; embed()
+    return np.squeeze(bmag)

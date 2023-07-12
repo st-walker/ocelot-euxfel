@@ -7,6 +7,7 @@ from enum import Enum, auto
 from collections import deque
 import logging
 from functools import reduce
+import pickle
 
 import numpy as np
 import ocelot.cpbd.elements as elements
@@ -17,7 +18,9 @@ from ocelot.cpbd.elements.optic_element import OpticElement
 import pandas as pd
 import toml
 
-from .fel_track import FELSimulationConfig
+from .fel_track import FELSimulationConfig, SectionedFEL, FELSection
+from .optics import MATCH_52, INJECTOR_MATCHING_QUAD_NAMES
+from .longlist import make_default_longlist
 
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
@@ -34,11 +37,12 @@ SKIP_TYPE = ["BENDMARK", "RF"]
 SKIP_CLASS = []
 SKIP_GROUP = [
     "CRYO",
-    "VACUUM",  # Fix this!
+    "VACUUM",
     "MOVER",  # "FASTKICK"
 ]
 
-EXTRA_PROPERTIES = "extra-bits.toml"
+REAL_MATCHED_CONF_FNAME = "real-matched-conf.pcl"
+# TRACKING_MATCHED_CONF_NAME = ""
 
 
 class MarkerPositionType(Enum):
@@ -328,8 +332,9 @@ class LongListConverter:
         lperiod = float(type_numbers[0]) * 1e-3
 
         undulator = elements.Undulator(lperiod=lperiod, nperiods=1, eid=row.NAME1)
-        # Sadly have to explicitly set the length here, otherwise it
-        # is 0.0 (???) for some reason.
+        # have to explicitly set the length here, otherwise it is 0.0
+        # cos the class invariant is not properly preserved by the
+        # class itself.
         undulator.l = undulator.lperiod * undulator.nperiods
         return undulator
 
@@ -404,7 +409,22 @@ def longlist_to_ocelot(
         )
         print("Written", outf)
 
-    real_config = make_felconfig_design_to_real(config["extras"]["real"])
+        real_config = make_felconfig_design_to_real(config["extras"]["real"])
+    real_matched_conf = generate_real_i1_matched_config(sequences["I1"], llcv.twiss0, real_config)
+    # Shouldn't really use pickle but I'm lazy maybe change one day
+    with (outdir / "real-matched-conf.pcl").open("wb") as f:
+        pickle.dump(real_matched_conf, f)
+        print(f"Wrote {f.name}")
+
+
+def generate_real_i1_matched_config(i1_sequence, twiss0, realconfig):
+    i1_dummy_section = FELSection(i1_sequence)
+    just_injector = SectionedFEL([i1_dummy_section], twiss0, felconfig=realconfig)
+    match_52_twiss_constraint = make_default_longlist().get_optics_constraint(MATCH_52)
+    real_matched_conf = just_injector.match(just_injector.twiss0,
+                                            elements=INJECTOR_MATCHING_QUAD_NAMES,
+                                            constraints=match_52_twiss_constraint)
+    return real_matched_conf
 
 
 def make_felconfig_design_to_real(dconf: dict) -> FELSimulationConfig:
@@ -486,5 +506,6 @@ def _parse_config_dict(dconf: dict) -> tuple[LatticeSection, dict]:
 
 def get_default_config() -> dict:
     return toml.load(
-        "/Users/stuartwalker/repos/oxfel/oxfel/longlist_ocelot_conversion.toml"
+        "/Users/stuartwalker/repos/oxfel/oxfel/accelerator/lattice/conversion-config.toml"
     )
+
