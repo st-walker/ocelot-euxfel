@@ -8,19 +8,22 @@ from collections import deque
 import logging
 from functools import reduce
 import pickle
+from importlib_resources import files
 
 import numpy as np
 import ocelot.cpbd.elements as elements
 from ocelot.cpbd.magnetic_lattice import MagneticLattice
-from ocelot.cpbd.beam import Twiss
+from ocelot.cpbd.beam import Twiss, get_envelope
 from ocelot.cpbd.latticeIO import LatticeIO
 from ocelot.cpbd.elements.optic_element import OpticElement
 import pandas as pd
 import toml
 
 from .fel_track import FELSimulationConfig, SectionedFEL, FELSection
-from .optics import MATCH_52, INJECTOR_MATCHING_QUAD_NAMES
+from .optics import START_SIM, MATCH_37, MATCH_52, INJECTOR_MATCHING_QUAD_NAMES
 from .longlist import make_default_longlist
+from .astra import load_reference_0320_100k_distribution
+
 
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
@@ -41,8 +44,8 @@ SKIP_GROUP = [
     "MOVER",  # "FASTKICK"
 ]
 
-REAL_MATCHED_CONF_FNAME = "real-matched-conf.pcl"
-# TRACKING_MATCHED_CONF_NAME = ""
+TRACKING_CONF_NAME = "tracking-matched-conf.toml"
+REAL_CONF_NAME = "real-matched-conf.toml"
 
 
 class MarkerPositionType(Enum):
@@ -379,6 +382,7 @@ def longlist_to_ocelot(
     fname: os.PathLike,
     ftoml: Optional[os.PathLike] = None,
     outdir: Optional[os.PathLike] = "./",
+    match: bool = False,
 ) -> None:
     if ftoml is None:
         config = get_default_config()
@@ -410,10 +414,16 @@ def longlist_to_ocelot(
         print("Written", outf)
 
         real_config = make_felconfig_design_to_real(config["extras"]["real"])
-    real_matched_conf = generate_real_i1_matched_config(sequences["I1"], llcv.twiss0, real_config)
-    # Shouldn't really use pickle but I'm lazy maybe change one day
-    with (outdir / "real-matched-conf.pcl").open("wb") as f:
-        pickle.dump(real_matched_conf, f)
+    real_matched_conf = generate_real_i1_matched_config(
+        sequences["I1"], llcv.twiss0, real_config
+    )
+
+    with (outdir / REAL_CONF_NAME).open("w") as f:
+        toml.dump(
+            {"components": real_matched_conf.components},
+            f,
+            encoder=toml.TomlNumpyEncoder(),
+        )
         print(f"Wrote {f.name}")
 
 
@@ -421,9 +431,11 @@ def generate_real_i1_matched_config(i1_sequence, twiss0, realconfig):
     i1_dummy_section = FELSection(i1_sequence)
     just_injector = SectionedFEL([i1_dummy_section], twiss0, felconfig=realconfig)
     match_52_twiss_constraint = make_default_longlist().get_optics_constraint(MATCH_52)
-    real_matched_conf = just_injector.match(just_injector.twiss0,
-                                            elements=INJECTOR_MATCHING_QUAD_NAMES,
-                                            constraints=match_52_twiss_constraint)
+    real_matched_conf = just_injector.match(
+        just_injector.twiss0,
+        elements=INJECTOR_MATCHING_QUAD_NAMES,
+        constraints=match_52_twiss_constraint,
+    )
     return real_matched_conf
 
 
@@ -434,28 +446,30 @@ def make_felconfig_design_to_real(dconf: dict) -> FELSimulationConfig:
         lh_angle = dconf["hlc"]["LH"]["angle"]
     except KeyError:
         lh_angle = None
-    result.controller.lh.angle = lh_angle
+
+    result.controls["lh"].angle = lh_angle
 
     try:
         bc0_angle = dconf["hlc"]["BC0"]["angle"]
     except KeyError:
         bc0_angle = None
-    result.controller.bc0.angle = bc0_angle
+    result.controls["bc0"].angle = bc0_angle
 
     try:
         bc1_angle = dconf["hlc"]["BC1"]["angle"]
     except KeyError:
         bc1_angle = None
-    result.controller.bc1.angle = bc1_angle
+    result.controls["bc1"].angle = bc1_angle
 
     try:
         bc2_angle = dconf["hlc"]["BC2"]["angle"]
     except KeyError:
         bc2_angle = None
-    result.controller.bc2.angle = bc2_angle
+    result.controls["bc2"].angle = bc2_angle
 
-    result.controller.components = dconf["components"]
+    result.components = dconf["components"]
     return result
+
 
 def _parse_new_markers_dict(dconf: dict) -> list[Union[RelativeMarker, SMarker]]:
     markers = []
@@ -483,6 +497,7 @@ def _parse_new_markers_dict(dconf: dict) -> list[Union[RelativeMarker, SMarker]]
 
     return markers
 
+
 def _parse_config_dict(dconf: dict) -> tuple[LatticeSection, dict]:
     sections = []
     for section_name, info in dconf["sections"].items():
@@ -505,7 +520,49 @@ def _parse_config_dict(dconf: dict) -> tuple[LatticeSection, dict]:
 
 
 def get_default_config() -> dict:
-    return toml.load(
-        "/Users/stuartwalker/repos/oxfel/oxfel/accelerator/lattice/conversion-config.toml"
+    return toml.load(files("oxfel.accelerator.lattice") / "conversion-config.toml")
+
+
+def match_real_injector():
+    from oxfel import cat_to_i1d
+
+    fel = cat_to_i1d(model_type="real")
+
+    parray032 = load_reference_0320_100k_distribution()
+
+    parray37 = fel.track(parray032, start="start_ocelot", stop=MATCH_37)
+    twiss37 = get_envelope(parray37)
+
+    ll = make_default_longlist()
+    match_52_twiss_constraint = ll.get_optics_constraint("MATCH.52.I1")
+
+    linear_matched_conf = fel.match(
+        twiss37,
+        start=MATCH_37,
+        stop=MATCH_52,
+        constraints=match_52_twiss_constraint,
+        elements=INJECTOR_MATCHING_QUAD_NAMES,
+        verbose=True,
     )
 
+    from IPython import embed; embed()
+
+    tracking_matched_conf = fel.match_beam(
+        parray37,
+        start=MATCH_37,
+        stop=MATCH_52,
+        elements=INJECTOR_MATCHING_QUAD_NAMES,
+        constraints=match_52_twiss_constraint,
+        felconfig=linear_matched_conf,
+    )
+
+    toml.load(files("oxfel.accelerator.lattice") / TRACKING_CONF_NAME)    
+    outdir = Path(oxfel.accelerator.lattice.__file__).parent
+
+    with (outdir / TRACKING_CONF_NAME).open("w") as f:
+        toml.dump(
+            {"components": tracking_matched_conf.components},
+            f,
+            encoder=toml.TomlNumpyEncoder(),
+        )
+        print(f"Wrote {f.name}")

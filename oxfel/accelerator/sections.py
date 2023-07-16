@@ -13,26 +13,31 @@ from ocelot.cpbd.physics_proc import *
 
 from oxfel.fel_track import FELSection, MachineSequence
 
-#Sig_Z=(0.0019996320155001497, 0.0006893836215002082, 0.0001020391309281775, 1.25044082708419e-05) #500pC 5kA
-#Sig_Z=(0.0019996320155001497, 0.0006817907866411071, 9.947650872824487e-05, 7.13045869665955e-06)  #500pC 10kA
-#Sig_Z=(0.0018761888067590127, 0.0006359220169656093, 9.204477386791353e-05, 7.032551498646372e-06) #250pC 5kA
-#Sig_Z=(0.0018856911379360524, 0.0005463919476045524, 6.826162032352288e-05, 1.0806534547678727e-05) #100pC 1kA
-Sig_Z=(0.0018732376720197858, 0.000545866016784069, 7.09234589639138e-05, 2.440742745010469e-06) #100 pC 5kA
-#Sig_Z=(0.0013314283765668853, 0.0004502566926198658, 4.64037216210807e-05, 2.346018397815618e-06) #100 pC 5kA SC
-#Sig_Z=(0.0013314187263949542, 0.00045069372029991764, 4.537451914820527e-05, 4.0554988027793585e-06)#100 pC 2.5kA SC
+# Sig_Z=(0.0019996320155001497, 0.0006893836215002082, 0.0001020391309281775, 1.25044082708419e-05) #500pC 5kA
+# Sig_Z=(0.0019996320155001497, 0.0006817907866411071, 9.947650872824487e-05, 7.13045869665955e-06)  #500pC 10kA
+# Sig_Z=(0.0018761888067590127, 0.0006359220169656093, 9.204477386791353e-05, 7.032551498646372e-06) #250pC 5kA
+# Sig_Z=(0.0018856911379360524, 0.0005463919476045524, 6.826162032352288e-05, 1.0806534547678727e-05) #100pC 1kA
+Sig_Z = (
+    0.0018732376720197858,
+    0.000545866016784069,
+    7.09234589639138e-05,
+    2.440742745010469e-06,
+)  # 100 pC 5kA
+# Sig_Z=(0.0013314283765668853, 0.0004502566926198658, 4.64037216210807e-05, 2.346018397815618e-06) #100 pC 5kA SC
+# Sig_Z=(0.0013314187263949542, 0.00045069372029991764, 4.537451914820527e-05, 4.0554988027793585e-06)#100 pC 2.5kA SC
 
 
 WAKES_PATH = files("oxfel.accelerator.wakes")
 
-SmoothPar=1000
-LHE=0*5000e-9  # GeV
-WakeSampling=1000
-WakeFilterOrder=10
+SmoothPar = 1000
+LHE = 0 * 5000e-9  # GeV
+WakeSampling = 1000
+WakeFilterOrder = 10
 CSRBin = 400
-CSRSigmaFactor=0.1
+CSRSigmaFactor = 0.1
 SCmesh = [63, 63, 63]
-bISR=True
-bRandomMesh=True
+bISR = True
+bRandomMesh = True
 
 
 BEAM_SMOOTHER = SmoothBeam()
@@ -50,6 +55,7 @@ CSR_N_BIN = 400
 # 250pC, no compression.
 Sig_Z = 0.0013
 # Sig_Z = Sig_Z
+
 
 def make_space_charge(*, step, nmesh_xyz=None, random_mesh=None):
     sc = SpaceCharge()
@@ -110,12 +116,12 @@ def make_csr(*, sigma_min, traj_step, apply_step, n_bin=None, step=None):
     return csr
 
 
-
 class G1(FELSection):
     def __init__(self):
         lattice = MagneticLattice(i1.cell, stop=i1.stop_astra)
         sequence = MachineSequence(lattice.sequence)
         super().__init__(sequence)
+
 
 class A1(FELSection):
     def __init__(self):
@@ -141,7 +147,7 @@ class A1(FELSection):
         sc2.random_mesh = bRandomMesh
 
         wake = Wake()
-        wake.wake_table = WakeTable(WAKES_PATH / 'RF/wake_table_A1.dat')
+        wake.wake_table = WakeTable(WAKES_PATH / "RF/wake_table_A1.dat")
         wake.factor = 1
         wake.step = 10
         wake.w_sampling = WakeSampling
@@ -155,7 +161,6 @@ class A1(FELSection):
         self.add_physics_process(sc, start=start_sim.id, stop=acc1_1_stop.id)
         self.add_physics_process(sc2, start=acc1_1_stop.id, stop=acc1_stop.id)
         self.add_physics_process(wake, start=i1.c_a1_1_1_i1.id, stop=acc1_stop.id)
-    
 
 
 class AH1(FELSection):
@@ -174,28 +179,29 @@ class AH1(FELSection):
         sc.nmesh_xyz = SCmesh
         sc.random_mesh = bRandomMesh
         wake = Wake()
-        wake.wake_table = WakeTable(WAKES_PATH / 'RF/wake_table_AH1.dat')
+        wake.wake_table = WakeTable(WAKES_PATH / "RF/wake_table_AH1.dat")
         wake.factor = 1
         wake.step = 10
         wake.w_sampling = WakeSampling
         wake.filter_order = WakeFilterOrder
         # adding physics processes
         self.add_physics_process(sc, start=ah1_start.id, stop=acc39_stop.id)
-        self.add_physics_process(wake, start=i1.c3_ah1_1_1_i1.id, stop= acc39_stop.id)
+        self.add_physics_process(wake, start=i1.c3_ah1_1_1_i1.id, stop=acc39_stop.id)
+
 
 class LH(FELSection):
     def __init__(self):
         acc39_stop = i1.stlat_47_i1
-        lhm_stop = i1.dump_csr_start #for going in I1D
+        lhm_stop = i1.dump_csr_start  # for going in I1D
         lattice = MagneticLattice(i1.cell + l1.cell, start=acc39_stop, stop=lhm_stop)
         super().__init__(lattice.sequence)
 
     def setup_physics(self):
         acc39_stop = i1.stlat_47_i1
-        lhm_stop = i1.dump_csr_start #for going in I1D
+        lhm_stop = i1.dump_csr_start  # for going in I1D
         csr = CSR()
         # csr.sigma_min = Sig_Z[0] * CSRSigmaFactor
-        csr.sigma_min = Sig_Z * CSRSigmaFactor        
+        csr.sigma_min = Sig_Z * CSRSigmaFactor
         csr.traj_step = 0.0005
         csr.apply_step = 0.005
         sc = SpaceCharge()
@@ -203,7 +209,7 @@ class LH(FELSection):
         sc.nmesh_xyz = SCmesh
         sc.random_mesh = bRandomMesh
         wake = Wake()
-        wake.wake_table = WakeTable(WAKES_PATH / 'RF/wake_table_TDS1.dat')
+        wake.wake_table = WakeTable(WAKES_PATH / "RF/wake_table_TDS1.dat")
         wake.factor = 1
         wake.step = 10
         wake.w_sampling = WakeSampling
@@ -217,8 +223,8 @@ class LH(FELSection):
         lh.z_waist = None
 
         self.add_physics_process(sc, start=acc39_stop.id, stop=lhm_stop.id)
-        # self.add_physics_process(csr, start=acc39_stop.id, stop=lhm_stop.id)
-        # self.add_physics_process(wake, start=acc39_stop.id, stop=lhm_stop.id)
+        self.add_physics_process(csr, start=acc39_stop.id, stop=lhm_stop.id)
+        self.add_physics_process(wake, start=acc39_stop.id, stop=lhm_stop.id)
 
 
 class I1D_Screen(FELSection):
@@ -228,7 +234,7 @@ class I1D_Screen(FELSection):
         i1d_stop = i1d.otrc_64_i1d
         lattice = MagneticLattice(i1.cell + i1d.cell, start=i1d_start.id)
         super().__init__(lattice.sequence)
-        
+
     def setup_physics(self):
         i1d_start = i1.dump_csr_start
         i1d_stop = i1d.otrc_64_i1d
@@ -249,21 +255,27 @@ class I1D_Screen(FELSection):
         self.add_physics_process(csr, start=i1d_start.id, stop=i1d.bpma_63_i1d.id)
         # self.add_physics_process(sv_dump, start=i1d_start.id, stop=i1d_start.id)
 
+
 class DL(FELSection):
     def __init__(self):
         cell = MachineSequence(i1.cell + l1.cell)
-        lh_stop_dl_start = i1.dump_csr_start.id # "dogleg_start"        
+        lh_stop_dl_start = i1.dump_csr_start.id  # "dogleg_start"
         dogleg_stop = "dogleg_stop_bc0_start"
         sequence = cell[lh_stop_dl_start:dogleg_stop]
         super().__init__(sequence)
-        
+
     def setup_physics(self):
-        lh_stop_dl_start = i1.dump_csr_start.id # "dogleg_start"        
+        lh_stop_dl_start = i1.dump_csr_start.id  # "dogleg_start"
         dogleg_stop = "dogleg_stop_bc0_start"
 
-        csr = make_csr(sigma_min=Sig_Z * CSR_SIGMA_FACTOR, traj_step=0.0005, apply_step=0.005, n_bin=CSR_N_BIN)
+        csr = make_csr(
+            sigma_min=Sig_Z * CSR_SIGMA_FACTOR,
+            traj_step=0.0005,
+            apply_step=0.005,
+            n_bin=CSR_N_BIN,
+        )
         wake = make_wake(
-            WAKES_PATH / 'mod_wake_0070.030_0073.450_MONO.dat',
+            WAKES_PATH / "mod_wake_0070.030_0073.450_MONO.dat",
             factor=1,
             w_sampling=WAKE_SAMPLING,
             filter_order=WAKE_FILTER_ORDER,
@@ -275,27 +287,35 @@ class DL(FELSection):
         self.add_physics_process(wake, start=dogleg_stop, stop=dogleg_stop)
 
 
-
 class BC0(FELSection):
     def __init__(self):
         l1_cell = MachineSequence(l1.cell)
         dogleg_stop_bc0_start = "dogleg_stop_bc0_start"
-        bc0_stop_l1_start= "bc0_stop_l1_start"
+        bc0_stop_l1_start = "bc0_stop_l1_start"
 
         sequence = l1_cell[dogleg_stop_bc0_start:bc0_stop_l1_start]
         super().__init__(sequence)
 
     def setup_physics(self):
         dogleg_stop_bc0_start = "dogleg_stop_bc0_start"
-        bc0_stop_l1_start= "bc0_stop_l1_start"
+        bc0_stop_l1_start = "bc0_stop_l1_start"
 
         csr = make_csr(
-            step=1, n_bin=CSR_N_BIN, sigma_min=Sig_Z * CSR_SIGMA_FACTOR, traj_step=0.0005, apply_step=0.001
+            step=1,
+            n_bin=CSR_N_BIN,
+            sigma_min=Sig_Z * CSR_SIGMA_FACTOR,
+            traj_step=0.0005,
+            apply_step=0.001,
         )
         sc = make_space_charge(step=40, nmesh_xyz=SC_MESH, random_mesh=SC_RANDOM_MESH)
 
-        self.add_physics_process(sc, start=dogleg_stop_bc0_start, stop=bc0_stop_l1_start)
-        self.add_physics_process(csr, start=dogleg_stop_bc0_start, stop=bc0_stop_l1_start)
+        self.add_physics_process(
+            sc, start=dogleg_stop_bc0_start, stop=bc0_stop_l1_start
+        )
+        self.add_physics_process(
+            csr, start=dogleg_stop_bc0_start, stop=bc0_stop_l1_start
+        )
+
 
 # class BC0(FELSection):
 
@@ -334,11 +354,12 @@ class BC0(FELSection):
 #         self.dipole_len = 0.5
 #         self.bc_gap=1.0
 
+
 class L1(FELSection):
     def __init__(self):
         l1_cell = MachineSequence(l1.cell)
         # Just after end of BC0
-        bc0_stop_l1_start= "bc0_stop_l1_start"
+        bc0_stop_l1_start = "bc0_stop_l1_start"
         # This is just before the start of BC1.
         a2_stop_bc1_start = "l1_stop_bc1_start"
 
@@ -347,7 +368,7 @@ class L1(FELSection):
 
     def setup_physics(self):
         # Just after end of BC0
-        bc0_stop_l1_start= "bc0_stop_l1_start"
+        bc0_stop_l1_start = "bc0_stop_l1_start"
         # This is just before the start of BC1.
         a2_stop_bc1_start = "l1_stop_bc1_start"
 
@@ -360,18 +381,24 @@ class L1(FELSection):
             filter_order=WAKE_FILTER_ORDER,
         )
         wake2 = make_wake(
-            "wakes/mod_wake_0078.970_0159.280_MONO.dat", factor=1, w_sampling=WAKE_SAMPLING, filter_order=WAKE_FILTER_ORDER
+            "wakes/mod_wake_0078.970_0159.280_MONO.dat",
+            factor=1,
+            w_sampling=WAKE_SAMPLING,
+            filter_order=WAKE_FILTER_ORDER,
         )
 
         l1_first_cavity = "C.A2.1.1.L1"
         l1_last_cavity = "C.A2.4.8.L1"
-        self.add_physics_process(BEAM_SMOOTHER, start=bc0_stop_l1_start, stop=bc0_stop_l1_start)
+        self.add_physics_process(
+            BEAM_SMOOTHER, start=bc0_stop_l1_start, stop=bc0_stop_l1_start
+        )
         self.add_physics_process(sc, start=bc0_stop_l1_start, stop=a2_stop_bc1_start)
         self.add_physics_process(wake, start=l1_first_cavity, stop=l1_last_cavity)
         self.add_physics_process(wake2, start=a2_stop_bc1_start, stop=a2_stop_bc1_start)
 
+
 # class L1(FELSection):
-    
+
 #     def __init__(self, data_dir, *args, **kwargs):
 #         super().__init__(data_dir)
 
@@ -420,10 +447,10 @@ class BC1(FELSection):
         l1_cell = MachineSequence(l1.cell)
         a2_stop_bc1_start = "l1_stop_bc1_start"
         bc1_stop_l2_start = "bc1_stop_l2_start"
-                   
+
         sequence = l1_cell[a2_stop_bc1_start:bc1_stop_l2_start]
 
-        super().__init__(sequence)        
+        super().__init__(sequence)
 
     def setup_physics(self):
         a2_stop_bc1_start = "l1_stop_bc1_start"
@@ -431,7 +458,11 @@ class BC1(FELSection):
 
         # init physics processes
         csr = make_csr(
-            step=1, n_bin=CSR_N_BIN, sigma_min=Sig_Z * CSR_SIGMA_FACTOR, traj_step=0.0005, apply_step=0.001
+            step=1,
+            n_bin=CSR_N_BIN,
+            sigma_min=Sig_Z * CSR_SIGMA_FACTOR,
+            traj_step=0.0005,
+            apply_step=0.001,
         )
         sc = make_space_charge(step=40, nmesh_xyz=SC_MESH, random_mesh=SC_RANDOM_MESH)
 
@@ -441,7 +472,6 @@ class BC1(FELSection):
         # self.dipoles = [l1.bb_182_b1, l1.bb_191_b1, l1.bb_193_b1, l1.bb_202_b1]
         # self.dipole_len = 0.5
         # self.bc_gap=8.5
-
 
 
 # class BC1(FELSection):
@@ -481,6 +511,7 @@ class BC1(FELSection):
 #         self.dipole_len = 0.5
 #         self.bc_gap=8.5
 
+
 class L2(FELSection):
     def __init__(self):
         cell = MachineSequence(l1.cell + l2.cell)
@@ -493,17 +524,20 @@ class L2(FELSection):
         bc1_stop_l2_start = "bc1_stop_l2_start"
         l2_stop_bc2_start = "l2_stop_bc2_start"
         sc = make_space_charge(step=100, nmesh_xyz=SC_MESH, random_mesh=SC_RANDOM_MESH)
-        wake = make_wake(WAKES_PATH / "RF/mod_TESLA_MODULE_WAKE_TAYLOR.dat", factor=4 * 3, step=200)
+        wake = make_wake(
+            WAKES_PATH / "RF/mod_TESLA_MODULE_WAKE_TAYLOR.dat", factor=4 * 3, step=200
+        )
         wake2 = make_wake(WAKES_PATH / "mod_wake_0179.810_0370.840_MONO.dat", factor=1)
 
         first_cavity_l2 = "C.A3.1.1.L2"
         last_cavity_l2 = "C.A5.4.8.L2"
 
-        self.add_physics_process(BEAM_SMOOTHER, start=bc1_stop_l2_start, stop=bc1_stop_l2_start)
+        self.add_physics_process(
+            BEAM_SMOOTHER, start=bc1_stop_l2_start, stop=bc1_stop_l2_start
+        )
         self.add_physics_process(sc, start=bc1_stop_l2_start, stop=l2_stop_bc2_start)
         self.add_physics_process(wake, start=first_cavity_l2, stop=last_cavity_l2)
         self.add_physics_process(wake2, start=l2_stop_bc2_start, stop=l2_stop_bc2_start)
-
 
 
 # class L2(FELSection):
@@ -544,6 +578,7 @@ class L2(FELSection):
 #         self.add_physics_process(wake, start=l2.c_a3_1_1_l2, stop=l2.c_a5_4_8_l2)
 #         self.add_physics_process(wake_add, start=acc3t5_stop, stop=acc3t5_stop)
 
+
 class BC2(FELSection):
     def __init__(self):
         l2_cell = MachineSequence(l2.cell)
@@ -559,15 +594,20 @@ class BC2(FELSection):
         bc2_stop_b2d_start = "bc2_stop_b2d_start"
 
         csr = make_csr(
-            step=1, n_bin=CSR_N_BIN, sigma_min=Sig_Z * CSR_SIGMA_FACTOR, traj_step=0.0005, apply_step=0.001
+            step=1,
+            n_bin=CSR_N_BIN,
+            sigma_min=Sig_Z * CSR_SIGMA_FACTOR,
+            traj_step=0.0005,
+            apply_step=0.001,
         )
         sc = make_space_charge(step=50, nmesh_xyz=SC_MESH, random_mesh=SC_RANDOM_MESH)
 
         self.add_physics_process(csr, start=l2_stop_bc2_start, stop=bc2_stop_b2d_start)
         self.add_physics_process(sc, start=l2_stop_bc2_start, stop=bc2_stop_b2d_start)
 
+
 # class BC2(FELSection):
-    
+
 #     def __init__(self, data_dir, *args, **kwargs):
 #         super().__init__(data_dir)
 
@@ -619,16 +659,20 @@ class B2D(FELSection):
     def setup_physics(self):
         bc2_stop_b2d_start = "bc2_stop_b2d_start"
         csr = make_csr(
-            step=1, n_bin=CSR_N_BIN, sigma_min=Sig_Z * CSR_SIGMA_FACTOR, traj_step=0.0005, apply_step=0.001
+            step=1,
+            n_bin=CSR_N_BIN,
+            sigma_min=Sig_Z * CSR_SIGMA_FACTOR,
+            traj_step=0.0005,
+            apply_step=0.001,
         )
         sc = make_space_charge(step=50, nmesh_xyz=SC_MESH, random_mesh=SC_RANDOM_MESH)
 
         self.add_physics_process(csr, start=bc2_stop_b2d_start, stop="BPMA.471.B2D")
-        self.add_physics_process(sc, start=bc2_stop_b2d_start, stop=None)
-        
+        self.add_physics_process(sc, start=bc2_stop_b2d_start, stop=self.sequence[-1].id)
+
 
 # class L3(FELSection):
-    
+
 #     def __init__(self, data_dir, *args, **kwargs):
 #         super().__init__(data_dir)
 
@@ -860,7 +904,6 @@ class B2D(FELSection):
 #         self.add_physics_process(wake_add1, start=stN10_stop, stop=stN10_stop)
 
 
-
 # class SASE1(FELSection):
 #     def __init__(self, data_dir, *args, **kwargs):
 #         super().__init__(data_dir)
@@ -970,7 +1013,6 @@ class B2D(FELSection):
 #         #self.add_physics_process(wake, start=t4.wake_start, stop=t4.m_tds)
 #         #self.add_physics_process(wake_vert, start=t4.m_tds, stop=t4.wake_stop)
 #         #self.add_physics_process(sc_in_bend, start=csr_start, stop=csr_stop)
-
 
 
 # class SASE3(FELSection):
@@ -1297,5 +1339,3 @@ class B2D(FELSection):
 
 #         self.lattice = MagneticLattice(t5.cell, start=t5.stsec_2743_t5, stop=t5.stsec_3039_t5d,
 #                                            method=self.method)
-
-

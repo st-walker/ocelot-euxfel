@@ -32,6 +32,12 @@ Overview
 --------
 
 
+TODO
+----
+
+* Automatic CSR bunch length parametrisation
+* Deal with doubled up marker choice (e.g. DUMP.CSR.START).
+
 Features
 --------
 
