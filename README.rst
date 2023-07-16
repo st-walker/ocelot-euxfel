@@ -18,6 +18,8 @@ oxfel
 
 ocelot xfel model
 
+Adapted from https://www.desy.de/xfel-beam/s2e/xfel/Nominal/nom250pC.html which remains the official public EuXFEL ocelot model.  This reposity is here for me to make my life easier and to make running start to end simulations less tedious, error-prone and complicated.  It is not an official, DESY-endorsed model of the EuXFEL.
+
 
 * Free software: MIT license
 * Documentation: https://oxfel.readthedocs.io.
