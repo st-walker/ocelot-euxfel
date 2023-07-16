@@ -54,13 +54,20 @@ nperiods = 10
 Kx = 1.315
 Ky = 0.0
 
-[extras.real.hlc.BC0]
-angle = 0.1429424657
+# [extras.real.hlc.LH]
+# angle = 5.7 deg
+# r56 = -4.34mm
 
-[extras.real.hlc.BC1]
-angle = 0.0539306739
+# [extras.real.hlc.BC0]
+# -6.85
+# -50mm
 
-[extras.real.hlc.BC2]
-angle = 0.0455530935
+# [extras.real.hlc.BC1]
+# -2.86
+# -50.11mm
+
+# [extras.real.hlc.BC2]
+# -2.39
+# r56 = -29.97mm
 
 # [extras.real.tracking]

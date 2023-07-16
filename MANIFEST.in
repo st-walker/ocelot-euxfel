@@ -12,3 +12,11 @@ recursive-include docs *.rst conf.py Makefile make.bat *.jpg *.png *.gif
 
 include oxfel/accelerator/wakes/mod_wake*.dat
 include oxfel/accelerator/wakes/RF/*.dat
+
+include oxfel/astra/euxfel-injector-100k.0320.001.gz
+include oxfel/astra/euxfel-injector-10k.0320.001.gz
+
+include oxfel/accelerator/lattice/component_list_2023.07.01.xls
+include oxfel/accelerator/lattice/conversion-config.toml
+include oxfel/accelerator/lattice/real-matched-conf.toml
+include oxfel/accelerator/lattice/tracking-matched-conf.toml

@@ -1,7 +1,7 @@
 import pandas as pd
+from importlib_resources import files
 
-
-DEFAULT_LONGLIST = "/Users/stuartwalker/repos/oxfel/oxfel/accelerator/lattice/component_list_2023.07.01.xls"
+DEFAULT_LONGLIST = files("oxfel.accelerator.lattice") / "component_list_2023.07.01.xls"
 
 def make_default_longlist():
     return XFELLongList(DEFAULT_LONGLIST)
@@ -77,10 +77,13 @@ class XFELLongList:
     def focussing_settings(self):
         return self.cavity_settings() | self.quadrupole_k1s() | self.chicane_settings()
 
-    def get_optics_constraint(self, name1) -> dict[str: dict[str, float]]:
+    def get_optics_constraint(self, name1) -> dict[str : dict[str, float]]:
         row = self[name1]
-        return {name1: {"beta_x": row.BETX,
-                        "beta_y": row.BETY,
-                        "alpha_x": row.ALFX,
-                        "alpha_y": row.ALFY}}
-
+        return {
+            name1: {
+                "beta_x": row.BETX,
+                "beta_y": row.BETY,
+                "alpha_x": row.ALFX,
+                "alpha_y": row.ALFY,
+            }
+        }
