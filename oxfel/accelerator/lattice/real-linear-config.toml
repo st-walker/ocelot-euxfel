@@ -1,0 +1,23 @@
+[controller.components]
+
+[sections]
+
+[sections.i1]
+
+# [sections.a1.physics]
+
+[sections.a1.physics]
+sc1 = {step = 1, nmesh_xyz = [63, 63, 63], random_mesh = true}
+
+
+
+# start = "start_ocelot"
+# stop = ""
+# step = 1
+
+
+
+# [sections-cat-i1d-dump-magnet]
+# [i1d-b1d]
+# [b1d-b2d]
+# [b2d-tld]

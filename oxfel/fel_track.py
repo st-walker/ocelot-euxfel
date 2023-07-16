@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from typing import Optional, Union, Type, Iterable
+from typing import Optional, Union, Type, Iterable, TypeVar
 from pathlib import Path
 import logging
 from copy import deepcopy
@@ -45,6 +45,7 @@ LOG.setLevel(logging.INFO)
 
 ElementT = TypeVar("ElementT", bound=OpticElement)
 ElementAccessType = Optional[Union[int, str, ElementT]]
+ElementSequenceT = list[ElementT]
 
 
 class TwissMismatchError(RuntimeError):
@@ -56,9 +57,7 @@ class MachineSequence(Sequence):
         super().__init__(*args, **kwargs)
         self._sequence = list(flatten(sequence))
 
-    def __getitem__(
-        self, key: ElementAccessType
-    ) -> Union[ElementT, MachineSequence]:
+    def __getitem__(self, key: ElementAccessType) -> Union[ElementT, MachineSequence]:
         if isinstance(key, slice):
             start, step, stop = key.start, key.step, key.stop
             if step is not None:
@@ -188,7 +187,7 @@ class FELSection:
         felconfig: Optional[FELSimulationConfig] = None,
     ) -> tuple[pd.DataFrame, MagneticLattice]:
         sequence = self.get_sequence(
-            idstart=idstart, idstop=idstop, felconfig=felconfig
+            idstart=idstart, idstop=idstop, felconfig=felconfig_net
         )
         mlat = MagneticLattice(sequence)
         all_twiss = oce_calc_twiss(mlat, twiss0, return_df=True)
@@ -212,8 +211,11 @@ class SectionedFEL:
     """
 
     def __init__(
-            self, sections: list[FELSection], twiss0: Twiss, outdir: os.PathLike = "./",
-            felconfig=None
+        self,
+        sections: list[FELSection],
+        twiss0: Twiss,
+        outdir: os.PathLike = "./",
+        felconfig=None,
     ):
         """
 
@@ -236,7 +238,6 @@ class SectionedFEL:
 
         return felconfig | felconfig2
 
-
     def _check_sections_for_duplicate_start_stops(self) -> None:
         sections = self.sections
         previous_section = sections[0]
@@ -256,11 +257,18 @@ class SectionedFEL:
         full_twiss = oce_calc_twiss(mlat, twiss0, return_df=True)
         return full_twiss, mlat
 
+    def design_twiss(self, stop: ElementAccessType = None):
+        twiss, mlat = self._calculate_twiss_between_two_points(
+            twiss0=self.twiss0, stop=stop
+        )
+        return twiss, mlat
+
     def machine_twiss(
         self,
         stop: ElementAccessType = None,
         felconfig: Optional[FELSimulationConfig] = None,
     ) -> tuple[pd.DataFrame, MagneticLattice]:
+        felconfig = self._net_felconfig(felconfig)
         twiss, mlat = self._calculate_twiss_between_two_points(
             twiss0=self.twiss0, stop=stop, felconfig=felconfig
         )
@@ -269,8 +277,10 @@ class SectionedFEL:
     def calculate_twiss(
         self, twiss0, start, stop=None, felconfig=None
     ) -> tuple[pd.DataFrame, MagneticLattice]:
+        felconfig_net = self._net_felconfig(felconfig)
         LOG.debug(f'Calculating linear optics between "{start}" and "{stop}"')
         # Final stretch, between the matching point and the provided "stop"
+        twiss0 = _coerce_to_ocelot_twiss(twiss0)
         twiss, mlat = self._calculate_twiss_between_two_points(
             twiss0=twiss0, start=start, stop=stop, felconfig=felconfig
         )
@@ -406,7 +416,6 @@ class SectionedFEL:
         felconfig: Optional[FELSimulationConfig] = None,
         physics: bool = True,
     ) -> Navigator:
-
         felconfig = self._net_felconfig(felconfig)
 
         # Make the navigator
@@ -428,7 +437,6 @@ class SectionedFEL:
                 proc_start_name,
                 proc_stop_name,
             ) in section.physics_processes:
-
                 assert isinstance(proc_start_name, str) or proc_start_name is None
                 assert isinstance(proc_stop_name, str) or proc_stop_name is None
 
@@ -438,7 +446,9 @@ class SectionedFEL:
                 if proc_stop_name is None:
                     proc_stop = None
 
-                if proc_start_name == proc_stop_name and process in sequence: # For occasion when you want to attach an element to the first
+                if (
+                    proc_start_name == proc_stop_name and process in sequence
+                ):  # For occasion when you want to attach an element to the first
                     pass
                 # If process stops before the sequene even begins, then skip.
                 elif proc_stop_name in sequence_before:
@@ -617,7 +627,9 @@ class SectionedFEL:
         **match_beam_kwargs,
     ) -> FELSimulationConfig:
         # Make navigator from given start, stop and felconfig
-        navi = self.to_navigator(start=start, stop=stop, felconfig=felconfig, physics=physics)
+        navi = self.to_navigator(
+            start=start, stop=stop, felconfig=felconfig, physics=physics
+        )
 
         if match == "projected":
             twiss_function = None
@@ -628,16 +640,15 @@ class SectionedFEL:
         else:
             raise ValueError(f"Unknown match string: {match}")
 
-
         # Update match_beam_kwargs with function **kwargs.
         match_beam_kwargs = {
             "verbose": True,
-            "max_iter": 500,
+            "max_iter": 1_000,
             "method": "simplex",
             "min_i5": False,
             "bounds": None,
             "vary_bend_angle": False,
-            "tws_fn": twiss_function
+            "tws_fn": twiss_function,
         } | match_beam_kwargs
 
         # Turn ElementAccessType into Element instances, if they are
@@ -661,10 +672,12 @@ class SectionedFEL:
         # Apply the result to the simulation config.
         new_conf = deepcopy(self._net_felconfig(felconfig))
 
-        new_conf.components = {
-            quad_name: {"k1": strength}
-            for (quad_name, strength) in zip([x.id for x in elements], res)
-        }
+        new_conf.components.update(
+            {
+                quad_name: {"k1": strength}
+                for (quad_name, strength) in zip([x.id for x in elements], res)
+            }
+        )
 
         return new_conf
 
@@ -713,47 +726,55 @@ class ElementNotFoundError(KeyError):
     pass
 
 
-class SequenceController:
+class Controller:
     def __init__(self, regex: str):
         self.regex = re.compile(regex)
 
     def match(self, element: ElementT) -> bool:
         return re.match(self.regex, element.id)
 
-class Controller:
-    def __init__(self, regex: str):
+    def should_modify(self) -> bool:
         pass
 
     def modify_element(self, element):
         pass
 
-    def modify_subsequence(self, sequence):
+    def modify_sequence(self, sequence):
         pass
 
-class TDSControl(SequenceController):
+
+class CavityController(Controller):
     def __init__(
         self,
         regex: str,
         phi: Optional[float] = None,
         v: Optional[float] = None,
-        active: bool = True,
+        active: bool = None,
+        coupler_kick=None,
     ):
         super().__init__(regex)
         self.phi = phi
         self.v = v
         self.active = active
+        self.coupler_kick = coupler_kick
 
-    @property
     def should_modify(self) -> bool:
-        return not self.active or self.phi is not None or self.v is not None
+        return self.active is not None or self.phi is not None or self.v is not None
 
-    def apply(self, element: ElementT) -> None:
-        if not self.should_modify:
+    def modify_element(self, element: ElementT) -> None:
+        if not self.should_modify():
             return
 
-        if not self.active:
+        if self.active is False:
             self.disable(element)
             return
+
+        if not self.coupler_kick:
+            try:
+                element.remove_coupler_kick()
+                LOG.debug(f"Removing coupler kick: {repr(element)}")
+            except AttributeError:
+                pass
 
         LOG.debug(
             f"Applying Cavity control to element: {element}.  phi1 = {self.phi}, v1 = {self.v}"
@@ -762,12 +783,10 @@ class TDSControl(SequenceController):
             element.v = self.v
         if self.phi is not None:
             element.phi = self.phi
-    def disable(self, element: ElementT) -> None:
-        element.phi = 0.0
+
+    def disable(self, element):
+        LOG.debug(f"Disabling: {element}")
         element.v = 0.0
-        LOG.debug(
-            f"Cavity control on element: {element}.  Disabling: {element.v=}, {element.phi=}"
-        )
 
     def __repr__(self) -> str:
         tname = type(self).__name__
@@ -785,228 +804,214 @@ class TDSControl(SequenceController):
         return self
 
 
-class CavityControl(TDSControl):
-    def __init__(
-        self,
-        regex: str,
-        phi: Optional[float] = None,
-        v: Optional[float] = None,
-        active: bool = True,
-        coupler_kick: bool = False,
-    ):
-        super().__init__(regex, phi=phi, v=v, active=active)
-        self.coupler_kick = coupler_kick
-
-    def apply(self, element: ElementT) -> None:
-        super().apply(element)
-
-        if not self.coupler_kick:
-            LOG.debug(f"Removing coupler kick: {repr(element)}")
-            element.remove_coupler_kick()
-
-    def __ior__(self, other):
-        self.phi = _set_if_not_none(self.phi, other.phi)
-        self.v = _set_if_not_none(self.v, other.v)
-        self.active = _set_if_not_none(self.active, other.active)
-        self.coupler_kick = _set_if_not_none(self.coupler_kick, other.coupler_kick)
-        return self
-
-
-def _set_if_not_none(value, other):
-    return value if other is None else other
-
-class SectionControl:
-    def __init__(self, regex):
-        self.regex = regex
-
-    def modify_sequence(self, sequence):
-        pass
-
-
-class ChicaneControl(SectionControl):
+class ChicaneController(Controller):
     MAX_DIPOLES = 4
+    DEFAULT_BEND_POLARITY = -1
+    # TODO: Does this work with sequences that are e.g. only one dipole?
+    # Two/3 dipoles instead of full chicane?
 
     def __init__(self, regex, angle=None, r56=None):
         super().__init__(regex)
         self.angle = angle
         self.r56 = r56
 
-        if angle and r56:
-            raise
+        if self.angle is not None and self.r56 is not None:
+            raise TypeError("angle and r56 are mutually exclusive")
 
-    def _find_chicane_indices(self):
-        chicane_indices = []
+    def _find_dipole_indices(self, sequence) -> list[int]:
+        dipole_indices = []
         for i, element in enumerate(sequence):
-            if self.regex.match(sequence):
-                chicane_indices.append(i)
-            if len(chicane_indices) == self.MAX_DIPOLES:
+            if self.regex.match(element.id):
+                dipole_indices.append(i)
+            if len(dipole_indices) == self.MAX_DIPOLES:
                 break
-        return chicane_indices
+        return sorted(dipole_indices)
 
-    def should_modify(self):
+    def should_modify(self) -> bool:
         return self.angle is not None or self.r56 is not None
 
-    def _get_new_angle(self, outer_length):
+    def _get_new_angle(self, sequence, dipole_indices):
+        projected_outer_drift_length, *_ = self._get_projected_lengths_from_sequence(
+            sequence, dipole_indices
+        )
+
         if self.r56 is not None:
-            angle = np.sqrt(-0.5 * self.r56 / projected_outer_length)
+            dipole_length = sequence[dipole_indices[0]].l
+            l0 = projected_outer_drift_length
+            angle = np.sqrt((-self.r56 * 0.5) / (l0 + 2 * dipole_length / 3))
         else:
-            angle = self.angle
+            angle = abs(self.angle)
         assert angle is not None
+
         return angle
 
-    def _get_outer_drift_projected_length(self):
-        chicane_indices = self._find_chicane_indices(sequence)
-
-        # Two outer drifts of chicane that we need to modify
-        # could be multiple elements because of markers etc...
-        first_drift = sequence[chicane_indices[0] + 1 : chicane_indices[1]]
-        third_drift = sequence[chicane_indices[2] + 1 : chicane_indices[3]]
-
-        first_drift_length = sum(x.l for x in first_drift)
-        third_drift_length = sum(x.l for x in third_drift)
-
-    def _get_projected_lengths_from_sequence(self, sequence):
-        first_drift = sequence[chicane_indices[0] + 1 : chicane_indices[1]]
-        second_drift = sequence[chicane_indices[1] + 1 : chicane_indices[2]]
-        third_drift = sequence[chicane_indices[2] + 1 : chicane_indices[3]]
+    def _get_projected_lengths_from_sequence(
+        self, sequence: ElementSequenceT, dipole_indices: list[int]
+    ):
+        first_drift = sequence[dipole_indices[0] + 1 : dipole_indices[1]]
+        second_drift = sequence[dipole_indices[1] + 1 : dipole_indices[2]]
 
         first_drift_length = sum(x.l for x in first_drift)
         second_drift_length = sum(x.l for x in second_drift)
-        third_drift_length = sum(x.l for x in third_drift)
 
-        assert first_drift == third_drift
-        return first_drift_length, second_drift_length, third_drift_length
+        first_dipole = sequence[dipole_indices[0]]
+        first_projected_length = first_drift_length * np.cos(first_dipole.angle)
 
+        return first_projected_length, second_drift_length, first_projected_length
 
-    def _update_angles(self, chicane_indices):
-        angle = self._get_new_angle()
+    @staticmethod
+    def _assert_consistency_in_dipole_angles(dipoles):
+        angle = abs(dipoles[0].angle)
+        for dipole in dipoles:
+            if abs(dipole.angle) != angle:
+                raise ValueError("Chicane has inconsistent dipole angles")
 
-    def _update_drifts(self, chicane_indices):
+    def _update_angles(self, sequence, dipole_indices):
+        # Get angle from attributes
+        angle = abs(self._get_new_angle(sequence, dipole_indices))
+        # Get dipoles whose angles we should update
+        dipoles = [sequence[i] for i in sorted(dipole_indices)]
+        # Get first dipole to get what polarity (-++-) or (+--+) we should use
+        first_dipole = dipoles[0]
+        bend_polarity = np.sign(first_dipole.angle)
+        if not bend_polarity:
+            bend_polarity = self.DEFAULT_BEND_POLARITY
+
+        # Update the angles
+        dipoles[0].angle = bend_polarity * angle
+        dipoles[0].e1 = 0.0
+        dipoles[0].e2 = bend_polarity * angle
+
+        dipoles[1].angle = -bend_polarity * angle
+        dipoles[1].e1 = -bend_polarity * angle
+        dipoles[1].e2 = 0
+
+        dipoles[2].angle = -bend_polarity * angle
+        dipoles[2].e1 = 0.0
+        dipoles[2].e2 = -bend_polarity * angle
+
+        dipoles[3].angle = bend_polarity * angle
+        dipoles[3].e1 = bend_polarity * angle
+        dipoles[3].e2 = 0.0
+
+    @staticmethod
+    def _update_drifts(sequence, dipole_indices):
         # Two outer drifts of chicane that we need to modify
         # could be multiple elements because of markers etc...
-        first_drift = sequence[chicane_indices[0] + 1 : chicane_indices[1]]
-        third_drift = sequence[chicane_indices[2] + 1 : chicane_indices[3]]
+        first_drift = sequence[dipole_indices[0] + 1 : dipole_indices[1]]
+        third_drift = sequence[dipole_indices[2] + 1 : dipole_indices[3]]
 
         first_drift_length = sum(x.l for x in first_drift)
         third_drift_length = sum(x.l for x in third_drift)
+        assert np.isclose(first_drift_length, third_drift_length, atol=1e-6)
 
-        assert first_drift_length == third_drift_length
-
-        angle = dipole1.angle
-
+        angle = abs(sequence[dipole_indices[0]].angle)
         projected_length = first_drift_length * np.cos(angle)
-
         new_drift_length = projected_length / np.cos(angle)
 
         ratio = new_drift_length / first_drift_length
 
         # finally update lengths.
-        for element in first_drift + second_drift:
+        for element in first_drift + third_drift:
             element.l *= ratio
 
-    def modify_sequence(self, sequence):
-        chicane_indices = self._find_chicane_indices(sequence)
-        self._update_drifts(sequence, chicane_indices)
-        self._update_angles(sequence, chicane_indices)
+    def _assert_consistency_in_drift_lengths(self, sequence, dipole_indices):
+        first_drift = sequence[dipole_indices[0] + 1 : dipole_indices[1]]
+        third_drift = sequence[dipole_indices[2] + 1 : dipole_indices[3]]
 
+        first_drift_length = sum(x.l for x in first_drift)
+        third_drift_length = sum(x.l for x in third_drift)
+
+        if not np.isclose(first_drift_length, third_drift_length, atol=1e-6):
+            raise ValueError(
+                "Outer chicane drifts have different lengths: {first_drift_length=}, {third_drift_length}="
+            )
+
+    def _assert_consistency_in_chicane(self, sequence, dipole_indices):
+        dipoles = [sequence[i] for i in dipole_indices]
+        # check all angles are the same in magnitude
+        self._assert_consistency_in_dipole_angles(dipoles)
+        # Check outer drifts have equal lengths
+        self._assert_consistency_in_drift_lengths(sequence, dipole_indices)
+
+    def modify_sequence(self, sequence):
+        if not self.should_modify():
+            return
+
+        dipole_indices = self._find_dipole_indices(sequence)
+
+        # Then this chicane isn't in the sequence anyway
+        if not dipole_indices:
+            return
+
+        if len(dipole_indices) != self.MAX_DIPOLES:
+            raise ValueError("Cannot modify partially defined chicane.")
+
+        # Chicane should be consistent before we modify it
+        self._assert_consistency_in_chicane(sequence, dipole_indices)
+
+        # The order matters here.  Won't work if drifts are changed first.
+        self._update_angles(sequence, dipole_indices)
+        self._update_drifts(sequence, dipole_indices)
+
+        # Chicane should be consistent still after we have modified it
+        self._assert_consistency_in_chicane(sequence, dipole_indices)
 
     def __ior__(self, other):
         self.angle = _set_if_not_none(self.angle, other.angle)
+        self.r56 = _set_if_not_none(self.r56, other.r56)
         return self
 
-class EuXFELHighLevelController:
-    def __init__(self):
-        self._components = {}
-        self.tds1 = TDSControl(regex=r"TDSA\.52\.I1")
-        self.tds2 = TDSControl(regex=r"TDSB\.(428|430)\.B2")
-        self.a1 = CavityControl(r"C\.A1\.1\.[0-8].I1")
-        self.ah1 = CavityControl(r"C3\.AH1\.1\.[0-8].I1")
-        self.a2 = CavityControl(regex=r"C\.A2\.[0-4]\.[0-8].L1")
-        self.a3 = CavityControl(regex=r"C\.A[3-5]\.[0-4]\.[0-8].L2")
-        self.lh = ChicaneControl(regex="BL\.(48I|48II|50I|50II)\.I1")
-        self.bc0 = ChicaneControl(regex=r"BB\.(96|98|100|101)\.I1")
-        self.bc1 = ChicaneControl(regex=r"BB\.(182|191|193|202)\.B1")
-        self.bc2 = ChicaneControl(regex=r"BB\.(393|402|404|413)\.B2")
 
-        self.global_coupler_kick = None
+DEFAULT_CONTROLS = {
+    "tds1": (CavityController, r"TDSA\.52\.I1"),
+    "tds2": (CavityController, r"TDSB\.(428|430)\.B2"),
+    "a1": (CavityController, r"C\.A1\.1\.[0-8].I1"),
+    "ah1": (CavityController, r"C3\.AH1\.1\.[0-8].I1"),
+    "a2": (CavityController, r"C\.A2\.[0-4]\.[0-8].L1"),
+    "a3": (CavityController, r"C\.A[3-5]\.[0-4]\.[0-8].L2"),
+    "lh": (ChicaneController, "BL\.(48I|48II|50I|50II)\.I1"),
+    "bc0": (ChicaneController, r"BB\.(96|98|100|101)\.I1"),
+    "bc1": (ChicaneController, r"BB\.(182|191|193|202)\.B1"),
+    "bc2": (ChicaneController, r"BB\.(393|402|404|413)\.B2"),
+}
 
-    def __ior__(self, other) -> FELSimulationConfig:
-        self.tds1 |= other.tds1
-        self.tds2 |= other.tds2
-        self.a1 |= other.a1
-        self.ah1 |= other.ah1
-        self.a2 |= other.a2
-        self.a3 |= other.a3
-        self.lh |= other.lh
-        self.bc0 |= other.bc0
-        self.bc1 |= other.bc1
-        self.bc2 |= other.bc2
 
-        self.global_coupler_kick = other.global_coupler_kick
+def _make_default_controls():
+    global DEFAULT_CONTROLS
+    return {name: cls(regex) for (name, (cls, regex)) in DEFAULT_CONTROLS.items()}
 
-        return self
-
-    def __or__(self, other):
-        result = deepcopy(self)
-        result |= other
-        return result
-
-    def new_sequence(self, sequence: Iterable[ElementT]) -> MachineSequence:
-        """Given an EuXFEL sequence, modify it based on the
-        configuration of this EuXFELController instance."""
-        new_sequence = deepcopy(sequence)
-        for element in new_sequence:
-            # Set TDS1
-            if self.tds1.match(element):
-                self.tds1.apply(element)
-                continue
-
-            if self.tds2.match(element):
-                self.tds2.apply(element)
-                continue
-
-            # Set A1
-            if self.a1.match(element):
-                self.a1.apply(element)
-                continue
-
-            if self.ah1.match(element):
-                self.ah1.apply(element)
-                continue
-
-            if self.a2.match(element):
-                self.a2.apply(element)
-                continue
-
-            if self.a3.match(element):
-                self.a3.apply(element)
-                continue
-
-        if self.lh.should_modify():
-            self.lh.modify_sequence(sequence)
-
-        return MachineSequence(new_sequence)
 
 class FELSimulationConfig:
     def __init__(
-            self,
-            metadata: Optional[dict] = None,
-            coupler_kick: bool = False,
-            controller: Optional[EuXFELHighLevelController] = None,
-            components: Optional[dict[str, dict[str, Any]]] = None,
-            tracking: Optional[TrackingConfiguration] = None
+        self,
+        metadata: Optional[dict] = None,
+        controls: Optional[dict[str, Any]] = None,
+        components: Optional[dict[str, dict[str, Any]]] = None,
+        tracking: Optional[TrackingConfiguration] = None,
     ):
         self.metadata = metadata if metadata else {}
-        self.coupler_kick = False
-
         self.components = components if components else {}
-        self.controller = controller if controller else EuXFELHighLevelController()
-
+        self.controls = controls if controls else _make_default_controls()
         self.tracking = tracking if tracking else TrackingConfiguration()
 
     def new_sequence(self, sequence):
-        new_sequence = self.controller.new_sequence(sequence)
+        new_sequence = self.apply_controls_to_sequence(sequence)
         new_sequence = self.apply_magnet_conf_to_sequence(new_sequence)
+        return new_sequence
+
+    def apply_controls_to_sequence(
+        self, sequence: Iterable[ElementT]
+    ) -> MachineSequence:
+        new_sequence = deepcopy(sequence)
+
+        for element in new_sequence:
+            for control in self.controls.values():
+                if control.should_modify() and control.match(element):
+                    control.modify_element(element)
+
+        for control in self.controls.values():
+            control.modify_sequence(new_sequence)
         return new_sequence
 
     def apply_magnet_conf_to_sequence(
@@ -1018,14 +1023,13 @@ class FELSimulationConfig:
             name = element.id
             if name in magnet_conf:
                 for key, value in magnet_conf[name].items():
-                    LOG.debug(f"Setting: {name}->{key} to {value}")
                     previous = getattr(element, key)
                     if np.isclose(previous, value):
-                        print(element)
+                        continue
                     setattr(element, key, value)
+                    LOG.debug(f"Set: {name}->{key} to {value}")
 
         return MachineSequence(sequence)
-
 
     def __str__(self) -> str:
         return textwrap.dedent(
@@ -1038,84 +1042,20 @@ class FELSimulationConfig:
 
     def __ior__(self, other) -> FELSimulationConfig:
         self.metadata |= other.metadata
-        self.controller |= other.controller
-        self.coupler_kick = other.coupler_kick
         self.components |= other.components
+        for name, other_control in other.controls.items():
+            try:
+                self.controls[name] |= other_control
+            except KeyError:
+                self.controls[name] = deepcopy(other_control)
+
         return self
 
     def __or__(self, other):
         result = deepcopy(self)
         result |= other
+
         return result
-
-    def get_bc_shoulders(self):
-        self.left_shoulder = []
-        self.right_shoulder = []
-        left_flag = False
-        right_flag = False
-        for i, elem in enumerate(self.sequence):
-            if elem == self.dipoles[0]:
-                left_flag = True
-            elif elem == self.dipoles[1]:
-                left_flag = False
-
-            if elem == self.dipoles[2]:
-                right_flag = True
-            elif elem == self.dipoles[3]:
-                right_flag = False
-
-            if left_flag and elem != self.dipoles[0]:
-                self.sequence[i] = copy.deepcopy(elem)
-                self.left_shoulder.append(self.sequence[i])
-            if right_flag and elem != self.dipoles[2]:
-                self.sequence[i] = copy.deepcopy(elem)
-                self.right_shoulder.append(self.sequence[i])
-
-        self.bc_gap_left = np.sum([d.l for d in self.left_shoulder])
-        right_len = np.sum([d.l for d in self.right_shoulder])
-
-        for d in self.left_shoulder:
-            d.len_coef = d.l / self.bc_gap_left
-        for d in self.right_shoulder:
-            d.len_coef = d.l / right_len
-
-    def change_bc_shoulders(self, drift):
-        for d in self.left_shoulder:
-            d.l = drift * d.len_coef
-
-        for d in self.right_shoulder:
-            d.l = drift * d.len_coef
-
-    def update_bunch_compressor(self, rho):
-        if self.dipoles is None:
-            print(self.__class__.__name__ + " No BC")
-            return
-
-        self.bc_analysis()
-
-        if self.dipole_len is None:
-            self.dipole_len = copy.copy(self.dipoles[0].l)
-
-        if rho == 0:
-            angle = 0
-            ds = self.dipole_len
-        else:
-            angle = np.arcsin(self.dipole_len / rho)
-            ds = angle * rho
-
-        if self.bc_gap is None:
-            self.bc_gap = self.bc_gap_left*np.cos(self.dipoles[0].angle)
-
-        drift = self.bc_gap / np.cos(angle)
-        self.change_bc_shoulders(drift)
-        # d.l=drift
-        for i, dip in enumerate(self.dipoles):
-            dip.angle = angle * np.sign(dip.angle)
-            dip.l = ds
-            if i in [0, 2]:
-                dip.e2 = angle * np.sign(dip.angle)
-            else:
-                dip.e1 = angle * np.sign(dip.angle)
 
 
 class NoTwiss(PhysProc):
@@ -1172,11 +1112,12 @@ class SliceTwissCalculator(PhysProc):
 def _twiss_central_slice(parray, match_slice="Imax", **kwargs):
     return twiss_parray_slice(parray, match_slice=match_slice, **kwargs)
 
+
 def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):
     # Put markers everywhere.
-    _, new_markers = insert_markers_by_predicate(navi.lat.sequence, lambda ele: True,
-                                                 before=False,
-                                                 after_suffix="")
+    _, new_markers = insert_markers_by_predicate(
+        navi.lat.sequence, lambda ele: True, before=False, after_suffix=""
+    )
 
     if opticscls is None:
         opticscls = TwissCalculator
@@ -1252,10 +1193,22 @@ def _get_element_instances_from_mlat(mlat, names):
     indices = mlat.find_indices_by_predicate(f)
     return [mlat.sequence[i] for i in indices]
 
+
 # class PhysicsConfiguration:
 #     processes: list
+
 
 @dataclass
 class TrackingConfiguration:
     unit_step: float = 0.02
     method: Transformation = TransferMap
+
+
+def _set_if_not_none(value, other):
+    return value if other is None else other
+
+
+def _coerce_to_ocelot_twiss(twisslike):
+    if isinstance(twisslike, Twiss):
+        return twisslike
+    return Twiss.from_series(twisslike)
