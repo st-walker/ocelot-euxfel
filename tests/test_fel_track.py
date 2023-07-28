@@ -4,11 +4,11 @@ import numpy as np
 
 from oxfel.accelerator.lattice import i1, i1d
 from oxfel.accelerator.sections import G1, A1, AH1
-from oxfel.fel_track import SectionedFEL, FELSimulationConfig
+from oxfel.fel_track import Linac, EuXFELSimConfig
 
 @pytest.fixture
 def fel():
-    return SectionedFEL([G1, A1, AH1], twiss0=i1.tws)
+    return Linac([G1, A1, AH1], twiss0=i1.tws)
 
 def test_get_sequence(fel):
     sequence = fel.get_sequence()

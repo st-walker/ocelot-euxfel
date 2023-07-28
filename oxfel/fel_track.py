@@ -186,7 +186,7 @@ class FELSection:
         return cls.__name__
 
 
-class SectionedFEL:
+class Linac:
     """
     Container of FELSection instances.
 
@@ -194,19 +194,18 @@ class SectionedFEL:
 
     def __init__(
         self,
-        sections: list[FELSection],
+            sequence,
         twiss0: Twiss,
         outdir: os.PathLike = "./",
         felconfig=None,
         default_start=None,
     ):
-        self.outdir = Path(outdir)
-        self.sections = sections
+        self.sequence = sequence
         self.twiss0 = twiss0
         self.felconfig = felconfig if felconfig else None
         self.default_start = default_start if default_start else None
 
-        self._check_sections_for_duplicate_start_stops()
+        # self._check_sections_for_duplicate_start_stops()
 
     def _net_felconfig(self, felconfig2=None):
         try:
@@ -219,10 +218,10 @@ class SectionedFEL:
 
         felconfig = self.felconfig
         if felconfig is None:
-            felconfig = FELSimulationConfig()
+            felconfig = EuXFELSimConfig()
 
         if felconfig2 is None:
-            felconfig2 = FELSimulationConfig()
+            felconfig2 = EuXFELSimConfig()
 
         return felconfig | felconfig2
 
@@ -254,7 +253,7 @@ class SectionedFEL:
     def machine_twiss(
         self,
         stop: ElementAccessType = None,
-        felconfig: Optional[FELSimulationConfig] = None,
+        felconfig: Optional[EuXFELSimConfig] = None,
     ) -> tuple[pd.DataFrame, MagneticLattice]:
         felconfig = self._net_felconfig(felconfig)
         twiss, mlat = self._calculate_twiss_between_two_points(
@@ -280,7 +279,7 @@ class SectionedFEL:
         parray0,
         start: TrackingStartPoint = None,
         stop: ElementAccessType = None,
-        felconfig: Optional[FELSimulationConfig] = None,
+        felconfig: Optional[EuXFELSimConfig] = None,
         dumps=None,
         physics=True,
     ) -> TrackingResult:
@@ -299,7 +298,7 @@ class SectionedFEL:
         parray0: ParticleArray,
         start: TrackingStartPoint = None,
         stop: ElementAccessType = None,
-        felconfig: Optional[FELSimulationConfig] = None,
+        felconfig: Optional[EuXFELSimConfig] = None,
         dumps=None,
         physics=False,
         opticscls=None,
@@ -328,7 +327,7 @@ class SectionedFEL:
         dumps=None,
         physics=False,
         opticscls=None,
-        felconfig: Optional[FELSimulationConfig] = None,
+        felconfig: Optional[EuXFELSimConfig] = None,
         **track_kwargs,
     ) -> TrackingResult:
         if isinstance(start, numbers.Number):
@@ -345,7 +344,7 @@ class SectionedFEL:
             _add_markers_to_navi_for_optics(navi, opticscls)
         if not opticscls:
             opticscls = TwissCalculator
-            
+
         if dumps is None:
             dumps = []
         copy_procs = _add_copy_beams(navi, dumps)
@@ -382,7 +381,7 @@ class SectionedFEL:
         self,
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
-        felconfig: Optional[FELSimulationConfig] = None,
+        felconfig: Optional[EuXFELSimConfig] = None,
         physics: bool = True,
     ) -> Navigator:
         felconfig = self._net_felconfig(felconfig)
@@ -480,7 +479,7 @@ class SectionedFEL:
         process: PhysProc,
         start_name: ElementAccessType,
         stop_name: ElementAccessType,
-        felconfig: FELSimulationConfig,
+        felconfig: EuXFELSimConfig,
     ) -> None:
         machine_twiss, _ = self.machine_twiss(felconfig=felconfig)
         start_energy = machine_twiss.query(f"id == '{start_name}'").iloc[0].E
@@ -495,51 +494,9 @@ class SectionedFEL:
         self,
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
-        felconfig: FELSimulationConfig = None,
+        felconfig: EuXFELSimConfig = None,
     ) -> MachineSequence:
-        result = []
-
-        found_start = False
-        found_stop = False
-
-        full_sequence = start is None and stop is None
-        section_sequences = [x.get_sequence() for x in self.sections]
-
-        # There is a difference in behaviour between stop is None and
-        # stop is the last element of the sequence.  only in the latter
-        # there shouldn't be...
-        if start is None:
-            start = section_sequences[0][0].id
-        if stop is None:
-            stop = section_sequences[-1][-1].id
-
-        for sequence in section_sequences:
-            this_section_start = None
-            this_section_stop = None
-            if start in sequence:
-                this_section_start = start
-                found_start = True
-            if stop in sequence:
-                this_section_stop = stop
-                found_stop = True
-
-            if not found_start and not full_sequence:
-                continue
-
-            if this_section_stop is not None:
-                result.extend(
-                    sequence.closed_interval(this_section_start, this_section_stop)
-                )
-            else:
-                result.extend(sequence.closed_interval(this_section_start, stop=None))
-            if found_stop and not full_sequence:
-                break
-
-        if start is not None and not found_start:
-            raise ValueError(f"Start position: {start} not found in sequence")
-        if stop is not None and not found_stop:
-            raise ValueError(f"Stop position {stop} not found in sequence")
-
+        result = self.sequence.closed_interval(start, stop)
         net_felconfig = self._net_felconfig(felconfig2=felconfig)
         return MachineSequence(net_felconfig.new_sequence(result))
 
@@ -588,7 +545,7 @@ class SectionedFEL:
         quad_names: list[str],
         twiss_goal: Twiss,
         maxiter=1,
-        felconfig: Optional[FELSimulationConfig] = None,
+        felconfig: Optional[EuXFELSimConfig] = None,
         match: Union[Callable[[ParticleArray], Twiss], str] = "projected",
     ):
         felconfig = self._net_felconfig(felconfig)
@@ -610,11 +567,11 @@ class SectionedFEL:
         constraints: dict[str : dict[str, float]],
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
-        felconfig: Optional[FELSimulationConfig] = None,
+        felconfig: Optional[EuXFELSimConfig] = None,
         physics=True,
         match="projected",
         **match_beam_kwargs,
-    ) -> FELSimulationConfig:
+    ) -> EuXFELSimConfig:
         # Make navigator from given start, stop and felconfig
         navi = self.to_navigator(
             start=start, stop=stop, felconfig=felconfig, physics=physics
@@ -678,10 +635,10 @@ class SectionedFEL:
         constraints: dict[str : dict[str, float]],
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
-        felconfig: Optional[FELSimulationConfig] = None,
+        felconfig: Optional[EuXFELSimConfig] = None,
         verbose=True,
         **match_kwargs,
-    ) -> FELSimulationConfig:
+    ) -> EuXFELSimConfig:
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
         lat_matching = MagneticLattice(sequence)
 
@@ -998,7 +955,11 @@ def _make_default_controls():
     return {name: cls(regex) for (name, (cls, regex)) in DEFAULT_CONTROLS.items()}
 
 
-class FELSimulationConfig:
+class SimulationConfig:
+    pass
+
+
+class EuXFELSimConfig(SimulationConfig):
     def __init__(
         self,
         metadata: Optional[dict] = None,
@@ -1056,7 +1017,7 @@ class FELSimulationConfig:
         - AH1 Cavities: phi = {self.controller.ah1.phi}, v = {self.controller.ah1.v}"""
         )
 
-    def __ior__(self, other) -> FELSimulationConfig:
+    def __ior__(self, other) -> EuXFELSimConfig:
         self.metadata |= other.metadata
         self.components |= other.components
         for name, other_control in other.controls.items():
@@ -1151,7 +1112,7 @@ class PeakEnergyTwissCalculator(SliceTwissCalculator):
 class PeakCurrentTwissCalculator(SliceTwissCalculator):
     MATCH = "Imax"
 
-    
+
 class FullTwissCalculator(PhysProc):
     def __init__(self, name):
         super().__init__()
@@ -1175,7 +1136,7 @@ class FullTwissCalculator(PhysProc):
         self.twiss = slice_params.extract_slice(ind0)
         self.twiss.s = float(parray.s)
         self.twiss.E = float(parray.E)
-    
+
 
 def _twiss_central_slice(parray, match_slice="Imax", **kwargs):
     return twiss_parray_slice(parray, slice=match_slice, **kwargs)

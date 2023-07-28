@@ -5,7 +5,7 @@ from ocelot.cpbd.match import match_with_backtracking, get_unary_twiss_function,
 
 from .tracking import start_sim_to_match_37
 from .optics import MATCH_37, MATCH_52, INJECTOR_MATCHING_QUAD_NAMES, default_match_point_optics
-from .fel_track import FELSimulationConfig
+from .fel_track import EuXFELSimConfig
 
 
 def match_injector(fel, parray032, felconfig=None, match="projected"):
@@ -27,7 +27,7 @@ def match_injector(fel, parray032, felconfig=None, match="projected"):
                                                   match=match)
 
     if felconfig is None:
-        felconfig = FELSimulationConfig()
+        felconfig = EuXFELSimConfig()
 
     felconfig.update_components(INJECTOR_MATCHING_QUAD_NAMES, strengths, "k1")
 
@@ -43,7 +43,7 @@ def get_injector_matching_convergence(fel, parray032, felconfig=None, match="pro
                               beta_y=match52.beta_y,
                               id="MATCH.52.I1"))
 
-    twiss_function = get_unary_twiss_function(match)    
+    twiss_function = get_unary_twiss_function(match)
     matcher = BacktrackingLinearMatcher(navi,
                                         parray37,
                                         goal_twiss,
@@ -51,7 +51,7 @@ def get_injector_matching_convergence(fel, parray032, felconfig=None, match="pro
                                         twiss_function=twiss_function)
 
     matcher.initial_match()
-    matcher.track_forwards()    
+    matcher.track_forwards()
 
     bmags = matcher.bmags()
 

@@ -20,7 +20,7 @@ from ocelot.cpbd.elements.optic_element import OpticElement
 import pandas as pd
 import toml
 
-from .fel_track import FELSimulationConfig, SectionedFEL, FELSection
+from .fel_track import EuXFELSimConfig, Linac, FELSection
 from .optics import START_SIM, MATCH_37, MATCH_52, INJECTOR_MATCHING_QUAD_NAMES
 from .longlist import make_default_longlist
 from .astra import load_reference_0320_100k_distribution
@@ -441,7 +441,7 @@ def longlist_to_ocelot(
 
 def generate_real_i1_matched_config(i1_sequence, twiss0, realconfig):
     i1_dummy_section = FELSection(i1_sequence)
-    just_injector = SectionedFEL([i1_dummy_section], twiss0, felconfig=realconfig)
+    just_injector = Linac([i1_dummy_section], twiss0, felconfig=realconfig)
     match_52_twiss_constraint = make_default_longlist().get_optics_constraint(MATCH_52)
     real_matched_conf = just_injector.match(
         just_injector.twiss0,
@@ -451,8 +451,8 @@ def generate_real_i1_matched_config(i1_sequence, twiss0, realconfig):
     return real_matched_conf
 
 
-def make_felconfig_design_to_real(dconf: dict) -> FELSimulationConfig:
-    result = FELSimulationConfig()
+def make_felconfig_design_to_real(dconf: dict) -> EuXFELSimConfig:
+    result = EuXFELSimConfig()
 
     try:
         lh_angle = dconf["hlc"]["LH"]["angle"]
@@ -578,7 +578,7 @@ def match_real_injector():
         print(f"Wrote {f.name}")
 
 
-def update_bunch_size_data(name, fel: SectionedFEL, parray032: ParticleArray):
+def update_bunch_size_data(name, fel: Linac, parray032: ParticleArray):
     _, twiss = fel.track_optics(parray032, start=START_SIM)
     outdir = files("oxfel.accelerator.lattice")
     fpath = get_bunchsizerc_path(name)
