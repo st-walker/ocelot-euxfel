@@ -1,15 +1,33 @@
+from enum import Enum, auto
 import pandas as pd
 from importlib_resources import files
 
-DEFAULT_LONGLIST = files("oxfel.accelerator.lattice") / "component_list_2023.07.01.xls"
+DEFAULT_COMPONENTLIST = files("oxfel.accelerator.lattice") / "component_list_2023.07.01.xls"
+
+
+# class DumpTarget(Enum):
+#     I1D = auto()
+#     B1D = auto()
+#     B2D = auto()
+#     TLD = auto()
+#     T4D = auto()
+#     T5D = auto()
+
 
 def make_default_longlist():
-    return XFELLongList(DEFAULT_LONGLIST)
+    return XFELComponentList(DEFAULT_COMPONENTLIST, "LONGLIST")
 
 
-class XFELLongList:
-    def __init__(self, xls_path, **read_excel_kwargs):
-        kwgs = {"sheet_name": "LONGLIST", "skiprows": [1]}
+def get_longlist_to_target(target="i1d", longlist_path=None):
+    assert target == "i1d"
+    if longlist_path is None:
+        longlist_path = DEFAULT_LONGLIST
+    return XFELComponentList(DEFAULT_LONGLIST, sheet="I1toI1D")
+
+
+class XFELComponentList:
+    def __init__(self, xls_path, sheet="LONGLIST",  **read_excel_kwargs):
+        kwgs = {"sheet_name": sheet, "skiprows": [1]}
         kwgs.update(read_excel_kwargs)
         df = pd.read_excel(xls_path, **kwgs)
         self.df = df

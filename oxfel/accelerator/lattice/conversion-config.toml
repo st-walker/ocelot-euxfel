@@ -30,6 +30,11 @@ bc0_stop_l1_start = { ref = "QI.103.I1", location = "before" }
 l1_stop_bc1_start = { ref = "STLAT.182.B1", location= "before" }
 bc1_stop_l2_start = { ref = "TORA.203.B1", location = "after" }
 
+
+[sections.B1D]
+start_name1 = "STSEC.229.B1D"
+stop_name1 = "ENSEC.237.B1D"
+
 [sections.L2]
 start_name1 = "STSUB.229.B1"
 stop_name1 = "ENSUB.466.B2"
@@ -42,6 +47,41 @@ bc2_stop_b2d_start = { ref = "TORA.415.B2", location = "after" }
 start_name1 = "STSEC.466.B2D"
 stop_name1 = "ENSEC.480.B2D"
 
+[sections.L3]
+start_name1 = "STSUB.466.B2"
+stop_name1 = "ENSEC.1652.L3"
+
+[sections.L3.new_markers]
+stop_l3 = { ref = "CFY.1651.L3", location = "before"}
+
+[sections.CL]
+start_name1 = "STSEC.1652.CL"
+stop_name1 = "ENSUB.1980.TL"
+
+[sections.TLD]
+start_name1 = "STSEC.1980.TLD"
+stop_name1 = "ENSEC.2130.TLD"
+
+# [sections.TL3TL4]
+# start_name1 = "STSUB.1980.TL"
+# stop_name1 = "ENSUB.2025.TL"
+
+# [sections.sa1]
+# start_name1 = "STSUB.2025.TL"
+# stop_name1 = "ENSEC.2461.SA1"
+
+# [sections.t4]
+# start_name1 = "STSEC.2461.T4"
+# stop_name1 = "ENSUB.2800.T4"
+
+# [sections.sa3]
+# start_name1 = "STSEC.2800.T4"
+# stop_name1 = "ENSEC.2955.SA3"
+
+# [sections.t4d]
+# start_name1 = "STSEC.2955.T4D"
+# stop_name1 = "ENSEC.3106.T4D"
+
 [extras.design]
 [extras.design."TDSA.52.I1"]
 tilt = 1.570796327
@@ -53,6 +93,11 @@ nperiods = 10
 [extras.real.components."U74.49.I1"]
 Kx = 1.315
 Ky = 0.0
+
+# [processes.csr.lh]
+# start = "Asdasd"
+# stop = "asdasd"
+# sigma_min = 0.55
 
 # [extras.real.hlc.LH]
 # angle = 5.7 deg
@@ -71,3 +116,4 @@ Ky = 0.0
 # r56 = -29.97mm
 
 # [extras.real.tracking]
+

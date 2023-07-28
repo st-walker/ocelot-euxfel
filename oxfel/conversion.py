@@ -12,6 +12,7 @@ from importlib_resources import files
 
 import numpy as np
 import ocelot.cpbd.elements as elements
+from ocelot.cpbd.beam import ParticleArray
 from ocelot.cpbd.magnetic_lattice import MagneticLattice
 from ocelot.cpbd.beam import Twiss, get_envelope
 from ocelot.cpbd.latticeIO import LatticeIO
@@ -46,6 +47,12 @@ SKIP_GROUP = [
 
 TRACKING_CONF_NAME = "tracking-matched-conf.toml"
 REAL_CONF_NAME = "real-matched-conf.toml"
+
+
+def get_bunchsizerc_path(beam_destination):
+    # e.g. i1d, b2d, tld, etc..
+    outdir = files("oxfel.accelerator.lattice")
+    return outdir / "{}-real-optics.pcl".format(beam_destination)
 
 
 class MarkerPositionType(Enum):
@@ -300,7 +307,7 @@ class LongListConverter:
         if tup.LENGTH != 0.0:
             common_kw["l"] = tup.LENGTH
 
-        assert tup.GROUP in {"RAMPKICK", "MAGNET", "FASTKICK"}
+        assert tup.GROUP in {"RAMPKICK", "MAGNET", "FASTKICK", "FBKICK"}, tup.GROUP
 
         if tup.CLASS == "QUAD":
             return elements.Quadrupole(k1=tup.STRENGTH / tup.LENGTH, **common_kw)
@@ -316,6 +323,10 @@ class LongListConverter:
             return elements.Solenoid(**common_kw)
         elif tup.CLASS == "SEXT":
             return elements.Sextupole(k2=tup.STRENGTH / tup.LENGTH, **common_kw)
+        elif tup.CLASS == "RBEN":
+            return elements.RBend(
+                angle=tup.STRENGTH, e1=tup.E1_LAG, e2=tup.E2_FREQ, **common_kw
+            )
 
         raise UnknownLongListElement(tup)
 
@@ -376,6 +387,7 @@ class LongListConverter:
 
     convert_rampkick = convert_magnet
     convert_fastkick = convert_magnet
+    convert_fbkick = convert_magnet
 
 
 def longlist_to_ocelot(
@@ -545,8 +557,6 @@ def match_real_injector():
         verbose=True,
     )
 
-    from IPython import embed; embed()
-
     tracking_matched_conf = fel.match_beam(
         parray37,
         start=MATCH_37,
@@ -556,8 +566,8 @@ def match_real_injector():
         felconfig=linear_matched_conf,
     )
 
-    toml.load(files("oxfel.accelerator.lattice") / TRACKING_CONF_NAME)    
-    outdir = Path(oxfel.accelerator.lattice.__file__).parent
+    toml.load(files("oxfel.accelerator.lattice") / TRACKING_CONF_NAME)
+    outdir = files("oxfel.accelerator.lattice")
 
     with (outdir / TRACKING_CONF_NAME).open("w") as f:
         toml.dump(
@@ -566,3 +576,12 @@ def match_real_injector():
             encoder=toml.TomlNumpyEncoder(),
         )
         print(f"Wrote {f.name}")
+
+
+def update_bunch_size_data(name, fel: SectionedFEL, parray032: ParticleArray):
+    _, twiss = fel.track_optics(parray032, start=START_SIM)
+    outdir = files("oxfel.accelerator.lattice")
+    fpath = get_bunchsizerc_path(name)
+    twiss.to_pickle(fpath)
+    print(f"Wrote {fpath}")
+

@@ -3,11 +3,18 @@ import toml
 import pathlib
 from click import option, group, argument, echo, Path
 
-from oxfel.conversion import longlist_to_ocelot, match_real_injector
+from oxfel.conversion import (
+    longlist_to_ocelot,
+    match_real_injector,
+    update_bunch_size_data,
+)
 import oxfel.accelerator.lattice
 from oxfel.longlist import DEFAULT_LONGLIST
-from oxfel.astra import load_reference_0320_100k_distribution
-from oxfel import cat_to_i1d, cat_to_b2d
+from oxfel.astra import (
+    load_reference_0320_10k_distribution,
+    load_reference_0320_100k_distribution,
+)
+from oxfel import cat_to_i1d, cat_to_b1d, cat_to_b2d, cat_to_tld, all_models
 from oxfel.optics import print_match_point_analysis, START_SIM
 
 
@@ -52,9 +59,15 @@ def plot(target, design, real, tracking):
     if target == "i1d":
         title = f"Cathode to I1D, {model_type.capitalize()} Optics"
         fel = cat_to_i1d(model_type=model_type)
+    elif target == "b1d":
+        title = f"Cathode to B1D, {model_type.capitalize()} Optics"
+        fel = cat_to_b1d(model_type=model_type)
     elif target == "b2d":
         title = f"Cathode to B2D, {model_type.capitalize()} Optics"
         fel = cat_to_b2d(model_type=model_type)
+    elif target == "tld":
+        title = f"Cathode to TLD, {model_type.capitalize()} Optics"
+        fel = cat_to_tld(model_type=model_type)
 
     if model_type == "tracking":
         parray032 = load_reference_0320_100k_distribution()
@@ -84,6 +97,15 @@ def plot(target, design, real, tracking):
     ax3.set_ylabel("$E$ / GeV")
 
     plt.show()
+
+
+@main.command()
+def sizes():
+    parray032 = load_reference_0320_10k_distribution()
+    for model_name, model in all_models(model_type="tracking").items():
+        destination = model_name.split("cat_to_")
+        print(f"Generating beam size data for {model_name}")
+        update_bunch_size_data(destination, model, parray032)
 
 
 if __name__ == "__main__":

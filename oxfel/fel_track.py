@@ -1,59 +1,59 @@
-"""
-Section class for s2e tracking.
-S.Tomin. XFEL/DESY. 2017
-"""
 from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from typing import Optional, Union, Type, Iterable, TypeVar
+from typing import Optional, Union, Type, Iterable, TypeVar, Callable, Any
 from pathlib import Path
 import logging
 from copy import deepcopy
 import textwrap
 import re
 import pandas as pd
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import functools
+import numbers
+import pickle
 
 import numpy as np
 from ocelot.cpbd.csr import CSR
-from ocelot.cpbd.beam import ParticleArray
-from ocelot.cpbd.physics_proc import PhysProc, SaveBeam
-from ocelot.cpbd.io import save_particle_array, load_particle_array
+from ocelot.cpbd.beam import ParticleArray, global_slice_analysis
+from ocelot.cpbd.physics_proc import PhysProc, CopyBeam
 import ocelot.cpbd.track as track
 from ocelot.cpbd.magnetic_lattice import (
     MagneticLattice,
     insert_markers_by_predicate,
     flatten,
 )
-from ocelot.cpbd.beam import twiss_parray_slice
-
-from ocelot.cpbd.transformations.transfer_map import TransferMap
+from ocelot.cpbd.beam import twiss_parray_slice, get_envelope
+from ocelot.cpbd.transformations import TransferMap, Transformation
 from ocelot.cpbd.elements.optic_element import OpticElement
 from ocelot.cpbd.beam import twiss_iterable_to_df
 from ocelot.cpbd.optics import Twiss, twiss as oce_calc_twiss
 from ocelot.cpbd.navi import Navigator
 from ocelot.cpbd.beam import optics_from_moments, moments_from_parray
-from ocelot.cpbd.match import match, match_beam
-
+from ocelot.cpbd.match import match, match_beam, match_with_backtracking
 
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.INFO)
 
-
 ElementT = TypeVar("ElementT", bound=OpticElement)
 ElementAccessType = Optional[Union[int, str, ElementT]]
+TrackingStartPoint = Union[ElementAccessType, float]
 ElementSequenceT = list[ElementT]
 
 
-class TwissMismatchError(RuntimeError):
-    pass
+@dataclass
+class TrackingResult:
+    parray1: ParticleArray
+    sequence: MachineSequence
+    twiss: Optional[pd.DataFrame] = None
+    dumps: dict[str, ParticleArray] = None
 
 
 class MachineSequence(Sequence):
     def __init__(self, sequence: list[ElementT], *args, **kwargs):
+        """Name addressable sequence of elements"""
         super().__init__(*args, **kwargs)
         self._sequence = list(flatten(sequence))
 
@@ -165,33 +165,14 @@ class MachineSequence(Sequence):
 class FELSection:
     def __init__(self, sequence: MachineSequence):
         self.sequence = MachineSequence(sequence)
-        self.physics_processes = []  # list of physics procs with start/stops
-        self.setup_physics()
 
-    def setup_physics(self):
-        pass
+    @property
+    def start(self):
+        return self.sequence[0].id
 
-    def add_physics_process(self, physics_process, start, stop):
-        if not isinstance(start, str) and start is not None:
-            raise TypeError(f"{start} should be a str , an element name, or None")
-        if not isinstance(stop, str) and stop is not None:
-            raise TypeError(f"{stop} should be a str, an element name, or None")
-
-        self.physics_processes.append([physics_process, start, stop])
-
-    def calculate_twiss(
-        self,
-        twiss0: Twiss,
-        idstart: ElementAccessType = None,
-        idstop: ElementAccessType = None,
-        felconfig: Optional[FELSimulationConfig] = None,
-    ) -> tuple[pd.DataFrame, MagneticLattice]:
-        sequence = self.get_sequence(
-            idstart=idstart, idstop=idstop, felconfig=felconfig_net
-        )
-        mlat = MagneticLattice(sequence)
-        all_twiss = oce_calc_twiss(mlat, twiss0, return_df=True)
-        return all_twiss, mlat
+    @property
+    def stop(self):
+        return self.sequence[-1].id
 
     def get_sequence(self, idstart=None, idstop=None, felconfig=None):
         if felconfig is not None:
@@ -207,7 +188,8 @@ class FELSection:
 
 class SectionedFEL:
     """
-    High level class to work with SectionTrack()
+    Container of FELSection instances.
+
     """
 
     def __init__(
@@ -216,19 +198,25 @@ class SectionedFEL:
         twiss0: Twiss,
         outdir: os.PathLike = "./",
         felconfig=None,
+        default_start=None,
     ):
-        """
-
-        :param sequence: list of SectionTrack()
-        """
         self.outdir = Path(outdir)
         self.sections = sections
         self.twiss0 = twiss0
         self.felconfig = felconfig if felconfig else None
+        self.default_start = default_start if default_start else None
 
         self._check_sections_for_duplicate_start_stops()
 
     def _net_felconfig(self, felconfig2=None):
+        try:
+            conf_path = Path(felconfig2)
+        except TypeError:
+            pass
+        else:
+            with conf_path.open("rb") as f:
+                felconfig2 = pickle.load(f)
+
         felconfig = self.felconfig
         if felconfig is None:
             felconfig = FELSimulationConfig()
@@ -282,7 +270,7 @@ class SectionedFEL:
         # Final stretch, between the matching point and the provided "stop"
         twiss0 = _coerce_to_ocelot_twiss(twiss0)
         twiss, mlat = self._calculate_twiss_between_two_points(
-            twiss0=twiss0, start=start, stop=stop, felconfig=felconfig
+            twiss0=twiss0, start=start, stop=stop, felconfig=felconfig_net
         )
 
         return twiss, mlat
@@ -290,13 +278,13 @@ class SectionedFEL:
     def track(
         self,
         parray0,
-        start: ElementAccessType = None,
+        start: TrackingStartPoint = None,
         stop: ElementAccessType = None,
         felconfig: Optional[FELSimulationConfig] = None,
         dumps=None,
         physics=True,
-    ) -> ParticleArray:
-        parray1, _ = self._piecewise_matched_tracking(
+    ) -> TrackingResult:
+        return self._do_tracking(
             parray0,
             calculate_optics=False,
             start=start,
@@ -306,20 +294,18 @@ class SectionedFEL:
             physics=physics,
         )
 
-        return parray1
-
     def track_optics(
         self,
         parray0: ParticleArray,
-        start: ElementAccessType = None,
+        start: TrackingStartPoint = None,
         stop: ElementAccessType = None,
         felconfig: Optional[FELSimulationConfig] = None,
         dumps=None,
         physics=False,
         opticscls=None,
         outdir: os.PathLike = None,
-    ) -> tuple[ParticleArray, pd.DataFrame]:
-        parray1, twiss = self._piecewise_matched_tracking(
+    ) -> TrackingResult:
+        tracking_result = self._do_tracking(
             parray0,
             start=start,
             calculate_optics=True,
@@ -330,84 +316,67 @@ class SectionedFEL:
             outdir=outdir,
             dumps=dumps,
         )
-        return parray1, twiss
+        return tracking_result
 
-    def _track_between_two_points(
+    def _do_tracking(
         self,
         parray0: ParticleArray,
         *,
         calculate_optics: bool,
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
-        outdir: os.PathLike = None,
         dumps=None,
         physics=False,
         opticscls=None,
         felconfig: Optional[FELSimulationConfig] = None,
-    ) -> tuple[ParticleArray, pd.DataFrame]:
-        if outdir is None:
-            outdir = Path(self.outdir)
+        **track_kwargs,
+    ) -> TrackingResult:
+        if isinstance(start, numbers.Number):
+            zstart = start
+            start = None
+        else:
+            zstart = 0.0
 
         navi = self.to_navigator(
             start=start, stop=stop, felconfig=felconfig, physics=physics
         )
-        if calculate_optics:
-            calc_procs = _add_markers_to_navi_for_optics(navi, opticscls)
 
-        if dumps:
-            _add_save_beams(navi, dumps, outdir)
+        if calculate_optics:
+            _add_markers_to_navi_for_optics(navi, opticscls)
+        if not opticscls:
+            opticscls = TwissCalculator
+            
+        if dumps is None:
+            dumps = []
+        copy_procs = _add_copy_beams(navi, dumps)
+
+        # It is important to do this AFTER manipulating the navigator
+        # (with copybeam and twiss calc instances being added) because
+        # otherwise we end up with everything being in a strange and
+        # bad state.  in principle could resolve it here but i don't know now.
+        navi.jump_to(zstart)
 
         LOG.debug(f'Starting tracking between "{start}" and "{stop}"')
         _, parray1 = track.track(
             navi.lat,
-            parray0,
+            parray0.copy(),
             navi=navi,
             calc_tws=False,
             print_progress=True,
             overwrite_progress=False,
         )
+
         if calculate_optics:
-            twiss = _extract_twiss_paramters_from_twiss_processes(calc_procs)
+            twiss_procs = [
+                p for p in navi.inactive_processes if isinstance(p, opticscls)
+            ]
+            twiss = _extract_twiss_paramters_from_twiss_processes(twiss_procs)
         else:
-            twiss = []
+            twiss = pd.DataFrame()
 
-        return parray1, twiss
+        dumps = {copy.name: copy.parray for copy in copy_procs}
 
-    def _piecewise_matched_tracking(
-        self,
-        parray0: ParticleArray,
-        calculate_optics: bool,
-        start: ElementAccessType = None,
-        stop: ElementAccessType = None,
-        felconfig: Optional[FELSimulationConfig] = None,
-        physics: bool = True,
-        outdir: os.PathLike = None,
-        opticscls=None,
-        dumps=None,
-    ):
-        LOG.debug("Beginning tracking")
-        parray0 = parray0.copy()
-        tracked_twiss = []
-        # Track to the matching points.  Which are also apparently assumed to be in order...
-        parray1, section_twiss = self._track_between_two_points(
-            parray0,
-            calculate_optics=calculate_optics,
-            start=start,
-            stop=stop,
-            outdir=outdir,
-            physics=physics,
-            dumps=dumps,
-            opticscls=opticscls,
-            felconfig=felconfig,
-        )
-        if calculate_optics:
-            tracked_twiss.append(section_twiss)
-            if tracked_twiss:
-                full_twiss_df = pd.concat(tracked_twiss)
-        else:
-            full_twiss_df = pd.DataFrame()
-
-        return parray1, full_twiss_df
+        return TrackingResult(parray1, navi.lat.sequence, twiss, dumps)
 
     def to_navigator(
         self,
@@ -420,8 +389,8 @@ class SectionedFEL:
 
         # Make the navigator
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
-        mlat = MagneticLattice(sequence, method={"global": felconfig.tracking.method})
-        navi = Navigator(mlat, unit_step=felconfig.tracking.unit_step)
+        mlat = MagneticLattice(sequence, method={"global": felconfig.physics.method})
+        navi = Navigator(mlat, unit_step=felconfig.physics.unit_step)
 
         sequence_before = self._get_sequence_before_start(start)
         sequence_after = self._get_sequence_after_stop(stop)
@@ -436,7 +405,7 @@ class SectionedFEL:
                 process,
                 proc_start_name,
                 proc_stop_name,
-            ) in section.physics_processes:
+            ) in section.build_physics_processes(felconfig.physics):
                 assert isinstance(proc_start_name, str) or proc_start_name is None
                 assert isinstance(proc_stop_name, str) or proc_stop_name is None
 
@@ -539,9 +508,6 @@ class SectionedFEL:
         # There is a difference in behaviour between stop is None and
         # stop is the last element of the sequence.  only in the latter
         # there shouldn't be...
-        xstart = start
-        xstop = stop
-
         if start is None:
             start = section_sequences[0][0].id
         if stop is None:
@@ -613,6 +579,29 @@ class SectionedFEL:
             s += element.l
         raise KeyError(f"{name} not found")
 
+    def simple_match(
+        self,
+        parray0: ParticleArray,
+        *,
+        start: ElementAccessType,
+        stop: ElementAccessType,
+        quad_names: list[str],
+        twiss_goal: Twiss,
+        maxiter=1,
+        felconfig: Optional[FELSimulationConfig] = None,
+        match: Union[Callable[[ParticleArray], Twiss], str] = "projected",
+    ):
+        felconfig = self._net_felconfig(felconfig)
+
+        navi = self.to_navigator(start=start, stop=stop, felconfig=felconfig)
+        strengths, _ = match_with_backtracking(
+            navi, parray0, twiss_goal, quad_names, maxiter=maxiter
+        )
+
+        cdict = {name: {"k1": k1} for name, k1 in zip(quad_names, strengths)}
+        felconfig.components.update(cdict)
+        return felconfig
+
     def match_beam(
         self,
         parray0: ParticleArray,
@@ -634,9 +623,9 @@ class SectionedFEL:
         if match == "projected":
             twiss_function = None
         elif match.lower() == "emax":
-            twiss_function = partial.functools(_twiss_central_slice, match_slice="EMax")
+            twiss_function = functools.partial(_twiss_central_slice, match_slice="Emax")
         elif match.lower() == "imax":
-            twiss_function = partial.functools(_twiss_central_slice, match_slice="IMax")
+            twiss_function = functools.partial(_twiss_central_slice, match_slice="Imax")
         else:
             raise ValueError(f"Unknown match string: {match}")
 
@@ -720,6 +709,33 @@ class SectionedFEL:
         new_conf.components.update(matched_strengths)
 
         return new_conf
+
+    # def _new_match_beam_linear_match(self,
+    #                                  parray0: ParticleArray,
+    #                                  *,
+    #                                  quad_names: list[str],
+    #                                  twiss_goal: Twiss,
+    #                                  # constraints: dict[str : dict[str, float]],
+    #                                  start: ElementAccessType = None,
+    #                                  stop: ElementAccessType = None,
+    #                                  felconfig: Optional[FELSimulationConfig] = None,
+    #                                  physics=True,
+    #                                  match="projected"):
+    #     sequence = self.get_sequence(start=start, stop=stop)
+
+    #     twiss_function = _string_to_twiss_match_function(match)
+    #     twiss0 = twiss_function(parray0)
+
+    #     linear_matched_conf = fel.match(
+    #         twiss0,
+    #         # felconfig=felconfig,
+    #         start=start,
+    #         stop=stop,
+    #         constraints=constraints,
+    #         elements=,
+    #         verbose=True,
+    #         max_iter=100000000
+    #     )
 
 
 class ElementNotFoundError(KeyError):
@@ -964,7 +980,7 @@ class ChicaneController(Controller):
 
 
 DEFAULT_CONTROLS = {
-    "tds1": (CavityController, r"TDSA\.52\.I1"),
+    "tdsi1": (CavityController, r"TDSA\.52\.I1"),
     "tds2": (CavityController, r"TDSB\.(428|430)\.B2"),
     "a1": (CavityController, r"C\.A1\.1\.[0-8].I1"),
     "ah1": (CavityController, r"C3\.AH1\.1\.[0-8].I1"),
@@ -988,12 +1004,12 @@ class FELSimulationConfig:
         metadata: Optional[dict] = None,
         controls: Optional[dict[str, Any]] = None,
         components: Optional[dict[str, dict[str, Any]]] = None,
-        tracking: Optional[TrackingConfiguration] = None,
+        physics: Optional[PhysicsConfig] = None,
     ):
         self.metadata = metadata if metadata else {}
         self.components = components if components else {}
         self.controls = controls if controls else _make_default_controls()
-        self.tracking = tracking if tracking else TrackingConfiguration()
+        self.physics = physics if physics else PhysicsConfig()
 
     def new_sequence(self, sequence):
         new_sequence = self.apply_controls_to_sequence(sequence)
@@ -1057,6 +1073,15 @@ class FELSimulationConfig:
 
         return result
 
+    def to_pickle(self, fpath):
+        with open(fpath, "wb") as f:
+            pickle.dump(self, f)
+            LOG.debug(f"Written pickled config to {fpath}")
+
+    def update_components(self, names, values, attribute):
+        self.components.update({name: {attribute: val} for name, val in zip(names, values)})
+
+
 
 class NoTwiss(PhysProc):
     MATCH = None
@@ -1080,16 +1105,18 @@ class TwissCalculator(PhysProc):
         self.twiss = None
 
     def apply(self, parray, dz):
+        # self.twiss = get_envelope(parray)
+        # self.twiss.s = float(parray.s)
         mean, cov = moments_from_parray(parray)
         self.twiss = optics_from_moments(mean, cov, parray.E)
         self.twiss.s = float(parray.s)
+        self.twiss.tautau = parray.tau().std() ** 2
 
     def __str__(self):
         return f"<{type(self).__name__}, name={self.name}>"
 
 
 class SliceTwissCalculator(PhysProc):
-    MATCH = "Emax"
     """Calculate dispersion-free Twiss parameters"""
 
     def __init__(self, name):
@@ -1098,19 +1125,60 @@ class SliceTwissCalculator(PhysProc):
         self.twiss = None
 
     def apply(self, parray, dz):
-        self.twiss = twiss_parray_slice(
+        slice_params = global_slice_analysis(
             parray,
-            slice="Emax",
             nparts_in_slice=5000,
             smooth_param=0.05,
             filter_base=2,
             filter_iter=2,
         )
-        self.twiss.s = float(parray.s)
 
+        if self.MATCH.lower() == "imax":
+            ind0 = np.argmax(slice_params.I)
+        elif self.MATCH.lower() == "emax":
+            ind0 = np.argmax(slice_params.me)
+
+        self.twiss = slice_params.extract_slice(ind0)
+        self.twiss.s = float(parray.s)
+        self.twiss.E = float(parray.E)
+
+
+
+class PeakEnergyTwissCalculator(SliceTwissCalculator):
+    MATCH = "Emax"
+
+
+class PeakCurrentTwissCalculator(SliceTwissCalculator):
+    MATCH = "Imax"
+
+    
+class FullTwissCalculator(PhysProc):
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+        self.twiss = None
+
+    def apply(self, parray, dz):
+        slice_params = global_slice_analysis(
+            parray,
+            nparts_in_slice=5000,
+            smooth_param=0.05,
+            filter_base=2,
+            filter_iter=2,
+        )
+
+        if self.MATCH.lower() == "imax":
+            ind0 = np.argmax(slice_params.I)
+        elif self.MATCH.lower() == "emax":
+            ind0 = np.argmax(slice_params.me)
+
+        self.twiss = slice_params.extract_slice(ind0)
+        self.twiss.s = float(parray.s)
+        self.twiss.E = float(parray.E)
+    
 
 def _twiss_central_slice(parray, match_slice="Imax", **kwargs):
-    return twiss_parray_slice(parray, match_slice=match_slice, **kwargs)
+    return twiss_parray_slice(parray, slice=match_slice, **kwargs)
 
 
 def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):
@@ -1144,26 +1212,22 @@ def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):
     return twiss_processes
 
 
-def _add_save_beams(navi, element_names, outdir):
+def _add_copy_beams(navi, element_names):
+    rprocs = []
     for element_name in element_names:
-        if isinstance(element_names, str):
-            fname = Path(outdir) / f"{element_name}.npz"
-        elif not isinstance(element_name, str):
-            element_name, fname = element_name
-            fname = outdir / f"{fname}"
-            if fname.suffix != ".npz":
-                fname = str(fname) + ".npz"
-
-        proc = SaveBeam(fname)
-        proc.element_name = element_name
-
+        # Make CopyBeam instance for this element name
+        proc = CopyBeam(element_name)
+        # find the element if it exists else bomb
         try:
             element = next(x for x in navi.lat.sequence if x.id == element_name)
         except StopIteration:
             raise ElementNotFoundError(f"{element_name} not found")
 
+        # Add the CopyBeam instance to the navigator
         navi.add_physics_proc(proc, element, element)
-        LOG.debug(f"Added SaveBeam process to {element_name}, writing to {fname}")
+        LOG.debug(f"Added CopyBeam process to {element_name}")
+        rprocs.append(proc)
+    return rprocs
 
 
 def _extract_twiss_paramters_from_twiss_processes(twiss_processes):
@@ -1185,8 +1249,6 @@ def _extract_twiss_paramters_from_twiss_processes(twiss_processes):
 
 
 def _get_element_instances_from_mlat(mlat, names):
-    elements = []
-
     def f(ele):
         return ele.id in names
 
@@ -1194,14 +1256,18 @@ def _get_element_instances_from_mlat(mlat, names):
     return [mlat.sequence[i] for i in indices]
 
 
-# class PhysicsConfiguration:
-#     processes: list
-
-
 @dataclass
-class TrackingConfiguration:
+class PhysicsConfig:
     unit_step: float = 0.02
     method: Transformation = TransferMap
+    beam_sizes: pd.DataFrame = None
+    csr_sigma_factor: float = 0.1
+    match_points: list[str] = field(default_factory=list)
+
+    def get_csr_sigma_min(self, start, stop):
+        subseq = self.beam_sizes.set_index("id").loc[start:stop]
+        rms_bunch_length = np.sqrt(subseq.tautau)
+        return self.csr_sigma_factor * min(rms_bunch_length)
 
 
 def _set_if_not_none(value, other):
@@ -1212,3 +1278,34 @@ def _coerce_to_ocelot_twiss(twisslike):
     if isinstance(twisslike, Twiss):
         return twisslike
     return Twiss.from_series(twisslike)
+
+
+# class MatchType(Enum):
+#     PROJECTED = auto()
+
+
+# @dataclass
+# class Match:
+#     marker_name: str
+#     match_type:
+
+# def _parse_track_kwargs(track_kwargs):
+#     rdict = copy(track_kwargs)
+#     if track_kwargs["navi"]:
+#         warnings.warn("Explicitly providing a Navigator is not supported.  Ignoring.")
+#         del rdict[track_kwargs]
+#     elif track_kwargs[""]
+
+#     pass
+
+
+def _string_to_twiss_match_function(match_string):
+    if match_string == "projected":
+        twiss_function = get_envelope
+    elif match_string.lower() == "emax":
+        twiss_function = functools.partial(_twiss_central_slice, match_slice="EMax")
+    elif match_string.lower() == "imax":
+        twiss_function = functools.partial(_twiss_central_slice, match_slice="IMax")
+    else:
+        raise ValueError(f"Unknown match string: {match_string}")
+    return twiss_function

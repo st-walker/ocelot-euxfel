@@ -51,8 +51,10 @@ def matrix_from(v_from, v_to):
     v_from and v_to should be array-like three-vectors.
 
     """
-    assert not are_parallel(v_from, v_to)
-    assert not are_anti_parallel(v_from, v_to)
+    if are_parallel(v_from, v_to):
+        return np.eye(3)
+    elif are_anti_parallel(v_from, v_to):
+        return _rodrigues_anti_parallel(v_from, v_to)
 
     axis = (np.cross(v_from,
                       v_to)
@@ -103,7 +105,7 @@ def new_load(fname, outdir):
     # Rotate the momenta
     new_momenta = np.einsum("ij,hj", rot, beam[["px", "py", "pz"]])
     # Rotate the positions after centering them.
-    new_positions = np.einsum("ij,hj", rot, beam[["x", "y", "z"]] - average_position)
+    new_positions = np.einsum("ij,hj", rot, beam[["x", "y", "z"]])
 
     # Set the new positions and momenta in the dataframe
     beam.loc[:, ["x", "y", "z"]] = new_positions
@@ -133,97 +135,5 @@ def main(fname):
     new_load(fname, "test")
 
 
-def RRv(u1, u2):
-    # % x-y-x
-    th1 = np.arctan2(u1[1],u1[2]);
-    M1x = RRx(-th1);
-    th2 = np.arctan2(u2[1],u2[2]);
-    M2x = RRx(-th2);
-    v1 = M1x @ u1;
-    v2 = M2x @ u2;
-    b = np.arctan2(v2[2],v2[0]);
-    a = np.arctan2(v1[2],v1[0]);
-    My = RRy(b-a);
-    R = M2x.T @ My @ M1x;
-    return R
-
-def RRx(theta):
-    # % ccw rotation with rotation axis out of the page
-    R = np.array([[1,  0,           0],
-                  [0,  np.cos(theta), -np.sin(theta)],
-                  [0,  np.sin(theta),  np.cos(theta)]])
-    return R
-
-
-def RRy(theta):
-    # % ccw rotation with rotation axis out of the page
-    R = np.array([[np.cos(theta), 0,  np.sin(theta)],
-                  [0,           1,  0],
-                  [-np.sin(theta), 0,  np.cos(theta)]])
-    return R
-
-# % % read in phase space
-# % phasespace = dlmread('E:\EG\Work\DESY_2023\XFEL_IBS2\Simulations\Astra_spch_withdipoles\euxfel-injector.2451.001');
-# phasespace = dlmread('E:\EG\Work\DESY_2023\XFEL_IBS2\Simulations\Reptil_spch\beam-42.5.astra');
-# phasespace = phasespace(:,1:10);
-
-# % translations and scalings
-# phasespace(2:end,3) = phasespace(1,3) + phasespace(2:end,3); % z
-# phasespace(2:end,6) = phasespace(1,6) + phasespace(2:end,6); % pz
-# %phasespace(2:end,7) = phasespace(1,7) + phasespace(2:end,7); % clock
-# phasespace(:,8) = phasespace(:,8)*1E-9; % q
-# % phasespace(:,3) = phasespace(:,3) - mean(phasespace(:,3));
-# % phasespace(:,7) = phasespace(:,7) - mean(phasespace(:,7));
-              
-# % rotate beam
-# r0 = [mean(phasespace(:,1)) mean(phasespace(:,2)) mean(phasespace(:,3))]';
-# u0 = [mean(phasespace(:,4)) mean(phasespace(:,5)) mean(phasespace(:,6))]';
-
-# if (Rotate_Beam)
-#     nz = [0 0 1]';
-#     R = RRv(nz,u0);
-#     for i=1:Np
-#         r1 = [phasespace(i,1) phasespace(i,2) phasespace(i,3)]';
-#         u1 = [phasespace(i,4) phasespace(i,5) phasespace(i,6)]';
-#         r2 = R*r1; %R*(r1-r0);
-#         u2 = R*u1; %R*(u1-u0);
-#         phasespace(i,1) = r2(1);
-#         phasespace(i,2) = r2(2);
-#         phasespace(i,3) = r2(3);
-#         phasespace(i,4) = u2(1);
-#         phasespace(i,5) = u2(2);
-#         phasespace(i,6) = u2(3);
-#     end
-# end
-
-# % test rotation
-# rr = [mean(phasespace(:,1)) mean(phasespace(:,2)) mean(phasespace(:,3))]';
-# ur = [mean(phasespace(:,4)) mean(phasespace(:,5)) mean(phasespace(:,6))]';
-
-# % parameters
-# param.N_slices=300;
-# param.Np_plot=size(phasespace(:,1),1);
-# param.L_no_zcorr=true;
-# param.X_hor=1;
-# param.X_ver=2;
-# param.X_long=3;
-# param.X_phase=4;
-# param.Slice_Analysis=5;
-# param.X_space = 6;
-# param.Np_plot = 100000;
-
-# out_postpro = postpro(phasespace(:,[1 4 2 5 3 6 8]),param);
-
-# %-eg dlmwrite( 'E:\EG\Work\DESY_2023\PSI2\Reptil\Ibs\Ref_200k\beam-66.txt', out_postpro.slice, 'delimiter','\t','precision','%e');
-
-# % Plot slice emittance
-#  %-egfigure(3);
-#  %-egplot(out_postpro.slice(:,1),out_postpro.slice(:,3))
-
-# % Plot slice energy spread
-# %-egfigure(4);
-# %-egplot(out_postpro.slice(:,1),out_postpro.slice(:,6))
-    
-    
 if __name__ == '__main__':
     main(sys.argv[1])

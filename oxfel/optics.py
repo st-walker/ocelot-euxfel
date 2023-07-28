@@ -8,7 +8,7 @@ INJECTOR_MATCHING_QUAD_NAMES: list[str] = [
     "QI.47.I1",
     "QI.50.I1",
 ]
-MATCH_TDS_B2_QUADRUPOLES: list[str] = [
+B2_MATCHING_QUAD_NAMES: list[str] = [
     "Q.333.L2",
     "Q.345.L2",
     "Q.357.L2",
@@ -27,7 +27,7 @@ MATCH_428: str = "MATCH.428.B2"
 
 
 FIXED_MATCH_POINTS: list[str] = [
-    MATCH_52,
+    "MATCH.52.I1",
     "MATCH.73.I1",
     "MATCH.104.I1",
     "MATCH.218.B1",
@@ -72,6 +72,7 @@ def _normalise_twiss_df(df):
     return df
 
 
+
 def get_match_point_optics(twiss_df, additional_names=None):
     twiss_df = _normalise_twiss_df(twiss_df)
 
@@ -81,7 +82,6 @@ def get_match_point_optics(twiss_df, additional_names=None):
     point_names = FIXED_MATCH_POINTS + additional_names
     names = [name for name in point_names if name in np.array(twiss_df["id"])]
     return twiss_df.set_index("id").loc[names].reset_index()[_OCELOT_TWISS_NAMES]
-
 
 def default_match_point_optics():
     df = make_default_longlist().df
@@ -93,9 +93,17 @@ def default_match_point_optics():
     return twiss
 
 
-def print_match_point_analysis(twiss_df, additional_names=None):
-    print(get_match_point(twiss_df, additional_names=additional_names))
 
+def print_match_point_analysis(twiss_or_twiss_df, additional_names=None):
+    try:
+        print(get_match_point(twiss_or_twiss_df, additional_names=additional_names))
+        return
+    except AttributeError:
+        pass
+    except:
+        raise TypeError(f"Unknown Twiss type: {twiss_or_twiss_df}")
+
+    print(get_match_point(twiss_or_twiss_df.to_series().to_frame().T, additional_names=additional_names))
 
 def get_match_point(twiss_df, additional_names=None):
     twiss_match = get_match_point_optics(twiss_df, additional_names=additional_names)
@@ -154,5 +162,4 @@ def bmag(beta, alpha, beta_design, alpha_design):
         (beta / beta_design + beta_design / beta)
         + (beta * beta_design * ((alpha_design / beta_design) - (alpha / beta)) ** 2)
     )
-    # from IPython import embed; embed()
     return np.squeeze(bmag)
