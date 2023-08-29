@@ -100,3 +100,29 @@ def all_models(model_type) -> dict:
         if name.startswith("cat_to_"):
             models[name] = obj(model_type=model_type)
     return models
+
+
+def match_injector(fel, parray032, felconfig=None, match="projected"):
+    parray37 = start_sim_to_match_37(fel, parray032, felconfig=felconfig)
+    navi = fel.to_navigator(start=MATCH_37, stop=MATCH_52)
+
+    match52 = default_match_point_optics().set_index("id").loc["MATCH.52.I1"]
+
+    goal_twiss = Twiss(**dict(alpha_x=match52.alpha_x,
+                              alpha_y=match52.alpha_y,
+                              beta_x=match52.beta_x,
+                              beta_y=match52.beta_y,
+                              id="MATCH.52.I1"))
+
+    strengths, mismatch = match_with_backtracking(navi, parray37,
+                                                  goal_twiss,
+                                                  INJECTOR_MATCHING_QUAD_NAMES,
+                                                  maxiter=1,
+                                                  match=match)
+
+    if felconfig is None:
+        felconfig = EuXFELSimConfig()
+
+    felconfig.update_components(INJECTOR_MATCHING_QUAD_NAMES, strengths, "k1")
+
+    return felconfig, mismatch

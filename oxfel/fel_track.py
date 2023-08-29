@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 import functools
 import numbers
 import pickle
+from collections import defaultdict
+from .processes import PlacedPhysicsProcess, PhysicsList
 
 import numpy as np
 from ocelot.cpbd.csr import CSR
@@ -32,6 +34,8 @@ from ocelot.cpbd.optics import Twiss, twiss as oce_calc_twiss
 from ocelot.cpbd.navi import Navigator
 from ocelot.cpbd.beam import optics_from_moments, moments_from_parray
 from ocelot.cpbd.match import match, match_beam, match_with_backtracking
+
+
 
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
@@ -186,24 +190,23 @@ class FELSection:
         return cls.__name__
 
 
+
+
 class Linac:
-    """
-    Container of FELSection instances.
-
-    """
-
     def __init__(
         self,
-            sequence,
+        sequence,
         twiss0: Twiss,
         outdir: os.PathLike = "./",
         felconfig=None,
         default_start=None,
+        physics_list=None
     ):
         self.sequence = sequence
         self.twiss0 = twiss0
         self.felconfig = felconfig if felconfig else None
         self.default_start = default_start if default_start else None
+        self.physics_list = physics_list if physics_list else PhysicsList([])
 
         # self._check_sections_for_duplicate_start_stops()
 
@@ -627,7 +630,7 @@ class Linac:
 
         return new_conf
 
-    def match(
+    def match_twiss(
         self,
         twiss0: Twiss,
         *,
@@ -637,6 +640,7 @@ class Linac:
         stop: ElementAccessType = None,
         felconfig: Optional[EuXFELSimConfig] = None,
         verbose=True,
+        full_output=False,
         **match_kwargs,
     ) -> EuXFELSimConfig:
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
@@ -651,20 +655,27 @@ class Linac:
             )
         )
 
+        # Always get full_output no matter what, only question is whether to return
+        # the extra output later
+        match_kwargs.pop("full_output", None)
+
         res = match(
-            lat_matching, constraints, elements, twiss0, verbose=verbose, **match_kwargs
+            lat_matching, constraints, elements, twiss0, verbose=verbose, full_output=True, **match_kwargs
         )
 
+        strengths = res[0]
         # Apply the result to the simulation config.
         new_conf = deepcopy(self._net_felconfig(felconfig))
 
         matched_strengths = {
             quad_name: {"k1": strength}
-            for (quad_name, strength) in zip([x.id for x in elements], res)
+            for (quad_name, strength) in zip([x.id for x in elements], strengths)
         }
 
         new_conf.components.update(matched_strengths)
 
+        if full_output:
+            return new_conf, res
         return new_conf
 
     # def _new_match_beam_linear_match(self,
@@ -673,7 +684,7 @@ class Linac:
     #                                  quad_names: list[str],
     #                                  twiss_goal: Twiss,
     #                                  # constraints: dict[str : dict[str, float]],
-    #                                  start: ElementAccessType = None,
+    #                                  start: ElementAccessType = None,w
     #                                  stop: ElementAccessType = None,
     #                                  felconfig: Optional[FELSimulationConfig] = None,
     #                                  physics=True,
