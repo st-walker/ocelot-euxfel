@@ -27,7 +27,8 @@ from ocelot.cpbd.magnetic_lattice import (
     flatten,
 )
 from ocelot.cpbd.beam import twiss_parray_slice, get_envelope
-from ocelot.cpbd.transformations import TransferMap, Transformation
+from ocelot.cpbd.transformations import TransferMap
+from ocelot.cpbd.transformations.transformation import Transformation
 from ocelot.cpbd.elements.optic_element import OpticElement
 from ocelot.cpbd.beam import twiss_iterable_to_df
 from ocelot.cpbd.optics import Twiss, twiss as oce_calc_twiss
