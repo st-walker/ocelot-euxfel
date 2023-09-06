@@ -98,7 +98,6 @@ def plot(target, design, real, tracking):
 
     plt.show()
 
-
 @main.command()
 def sizes():
     parray032 = load_reference_0320_10k_distribution()
@@ -106,7 +105,6 @@ def sizes():
         destination = model_name.split("cat_to_")
         print(f"Generating beam size data for {model_name}")
         update_bunch_size_data(destination, model, parray032)
-
 
 if __name__ == "__main__":
     main()  # pragma: no cover, pylint: disable=no-value-for-parameter

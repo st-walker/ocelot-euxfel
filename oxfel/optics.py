@@ -72,7 +72,6 @@ def _normalise_twiss_df(df):
     return df
 
 
-
 def get_match_point_optics(twiss_df, additional_names=None):
     twiss_df = _normalise_twiss_df(twiss_df)
 
@@ -91,7 +90,6 @@ def default_match_point_optics():
     twiss = match_points[_OCELOT_TWISS_NAMES]
 
     return twiss
-
 
 
 def print_match_point_analysis(twiss_or_twiss_df, additional_names=None):

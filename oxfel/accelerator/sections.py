@@ -28,7 +28,6 @@ class SpontaneousRadiationSection:
             proc = SpontanRadEffects(radius=radius, type="dipole")
             self.add_physics_process(proc, dipole_name, dipole_name)
 
-
 class G1(FELSection):
     def __init__(self):
         sequence = MachineSequence(i1.cell)[: i1.start_ocelot.id]
@@ -39,6 +38,46 @@ class G1(FELSection):
         return [(ExceptionalProc(message), self.start, self.stop)]
 
 
+class A1(FELSection):
+    def __init__(self):
+        start_sim = i1.start_ocelot
+        acc1_stop = i1.a1_sim_stop
+        lattice = MagneticLattice(i1.cell, start=start_sim, stop=acc1_stop)
+        sequence = MachineSequence(lattice.sequence)
+        super().__init__(sequence)
+
+    def setup_physics(self):
+        start_sim = i1.start_ocelot
+        acc1_stop = i1.a1_sim_stop
+
+        # init physics processes
+        sc = SpaceCharge()
+        sc.step = 1
+        sc.nmesh_xyz = SCmesh
+        sc.random_mesh = bRandomMesh
+
+        sc2 = SpaceCharge()
+        sc2.step = 1
+        sc2.nmesh_xyz = SCmesh
+        sc2.random_mesh = bRandomMesh
+
+        wake = Wake()
+        wake.wake_table = WakeTable(WAKES_PATH / "RF/wake_table_A1.dat")
+        wake.factor = 1
+        wake.step = 10
+        wake.w_sampling = WakeSampling
+        wake.filter_order = WakeFilterOrder
+
+        smooth = SmoothBeam()
+        smooth.mslice = SmoothPar
+        # adding physics processes
+        acc1_1_stop = i1.a1_1_stop
+        self.add_physics_process(smooth, start=start_sim.id, stop=start_sim.id)
+        self.add_physics_process(sc, start=start_sim.id, stop=acc1_1_stop.id)
+        self.add_physics_process(sc2, start=acc1_1_stop.id, stop=acc1_stop.id)
+        self.add_physics_process(wake, start=i1.c_a1_1_1_i1.id, stop=acc1_stop.id)
+
+        
 
 class AH1(FELSection):
     def __init__(self):
@@ -126,6 +165,7 @@ class I1D(FELSection):
         return physics_processes
 
 
+
 class DL(FELSection):
     def __init__(self):
         cell = MachineSequence(i1.cell + l1.cell)
@@ -156,7 +196,6 @@ class DL(FELSection):
         ]
         return physics_processes
 
-
 class BC0(FELSection):
     def __init__(self):
         l1_cell = MachineSequence(l1.cell)
@@ -177,6 +216,7 @@ class BC0(FELSection):
         sc = make_space_charge(step=40, nmesh_xyz=SC_MESH, random_mesh=SC_RANDOM_MESH)
         physics_processes = [(sc, self.start, self.stop), (csr, self.start, self.stop)]
         return physics_processes
+
 
 
 class L1(FELSection):
@@ -261,6 +301,7 @@ class B1D(FELSection):
         sc = make_space_charge(step=50, nmesh_xyz=SC_MESH, random_mesh=SC_RANDOM_MESH)
 
         return [(csr, self.start, self.stop), (sc, self.start, self.stop)]
+
 
 
 class L2(FELSection):
@@ -514,7 +555,6 @@ class STN10(FELSection):
             wake_add, start=collimator3_stop, stop=collimator3_stop
         )
         self.add_physics_process(wake_add1, start=stN10_stop, stop=stN10_stop)
-
 
 # class SASE1(FELSection):
 #     def __init__(self, data_dir, *args, **kwargs):

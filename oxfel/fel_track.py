@@ -1054,7 +1054,6 @@ class EuXFELSimConfig(SimulationConfig):
         self.components.update({name: {attribute: val} for name, val in zip(names, values)})
 
 
-
 class NoTwiss(PhysProc):
     MATCH = None
 
@@ -1151,6 +1150,7 @@ class FullTwissCalculator(PhysProc):
 
 def _twiss_central_slice(parray, match_slice="Imax", **kwargs):
     return twiss_parray_slice(parray, slice=match_slice, **kwargs)
+
 
 
 def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):

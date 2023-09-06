@@ -584,4 +584,3 @@ def update_bunch_size_data(name, fel: Linac, parray032: ParticleArray):
     fpath = get_bunchsizerc_path(name)
     twiss.to_pickle(fpath)
     print(f"Wrote {fpath}")
-
