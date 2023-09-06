@@ -34,7 +34,8 @@ from ocelot.cpbd.beam import twiss_iterable_to_df
 from ocelot.cpbd.optics import Twiss, twiss as oce_calc_twiss
 from ocelot.cpbd.navi import Navigator
 from ocelot.cpbd.beam import optics_from_moments, moments_from_parray
-from ocelot.cpbd.match import match, match_beam, match_with_backtracking
+from ocelot.cpbd.match import match, match_beam
+
 
 
 

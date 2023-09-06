@@ -11,5 +11,5 @@ from .predefined import cat_to_i1d #, cat_to_b1d, cat_to_b2d, cat_to_tld, all_mo
 from .longlist import XFELComponentList
 from .optics import FIXED_MATCH_POINTS, get_match_point_optics
 
-from .matching import match_injector
+from .secmatch import match_injector
 from .astra import load_reference_0320_100k_distribution
