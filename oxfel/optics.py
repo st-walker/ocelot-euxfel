@@ -1,3 +1,5 @@
+from ocelot.cpbd.beam import Twiss
+
 from .longlist import make_default_longlist
 import numpy as np
 
@@ -63,6 +65,7 @@ def _normalise_twiss_df(df):
             "BETY": "beta_y",
             "ALFX": "alpha_x",
             "ALFY": "alpha_y",
+            "ENERGY": "E",
             "S": "s",
             "NAME1": "id",
             "NAME": "id",
@@ -88,9 +91,15 @@ def default_match_point_optics():
 
     match_points = df.set_index("id").loc[FIXED_MATCH_POINTS].reset_index()
     twiss = match_points[_OCELOT_TWISS_NAMES]
-
     return twiss
 
+
+def get_default_match_point(match_name):
+    df = default_match_point_optics()
+    twiss_series = df[df.id == match_name]
+    
+    return Twiss.from_series(twiss_series)
+    # TODO: Twiss.from_series(match_name)
 
 def print_match_point_analysis(twiss_or_twiss_df, additional_names=None):
     try:

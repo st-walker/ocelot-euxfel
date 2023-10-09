@@ -167,6 +167,10 @@ class MachineSequence(Sequence):
     def __repr__(self) -> str:
         return f"<MachineSequence: {repr(self._sequence)}>"
 
+    def reverse(self):
+        """reverse *IN PLACE*"""
+        self._sequence.reverse()
+
 
 class FELSection:
     def __init__(self, sequence: MachineSequence):
@@ -642,7 +646,6 @@ class Linac:
         stop: ElementAccessType = None,
         felconfig: Optional[EuXFELSimConfig] = None,
         verbose=True,
-        full_output=False,
         **match_kwargs,
     ) -> EuXFELSimConfig:
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
@@ -657,15 +660,10 @@ class Linac:
             )
         )
 
-        # Always get full_output no matter what, only question is whether to return
-        # the extra output later
-        match_kwargs.pop("full_output", None)
-
-        res = match(
-            lat_matching, constraints, elements, twiss0, verbose=verbose, full_output=True, **match_kwargs
+        strengths = match(
+            lat_matching, constraints, elements, twiss0, verbose=verbose, **match_kwargs
         )
 
-        strengths = res[0]
         # Apply the result to the simulation config.
         new_conf = deepcopy(self._net_felconfig(felconfig))
 
@@ -676,8 +674,6 @@ class Linac:
 
         new_conf.components.update(matched_strengths)
 
-        if full_output:
-            return new_conf, res
         return new_conf
 
     # def _new_match_beam_linear_match(self,
@@ -1030,7 +1026,8 @@ class EuXFELSimConfig(SimulationConfig):
         - AH1 Cavities: phi = {self.controller.ah1.phi}, v = {self.controller.ah1.v}"""
         )
 
-    def __ior__(self, other) -> EuXFELSimConfig:
+    def __ior__(self, other)\
+        -> EuXFELSimConfig:
         self.metadata |= other.metadata
         self.components |= other.components
         for name, other_control in other.controls.items():
