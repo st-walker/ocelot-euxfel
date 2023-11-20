@@ -15,7 +15,7 @@ from .lattice import tld
 
 from ocelot.cpbd.physics_proc import *
 
-from oxfel.fel_track import FELSection, MachineSequence
+# from oxfel.fel_track import FELSection, MachineSequence
 
 
 class SpontaneousRadiationSection:

@@ -14,7 +14,7 @@ import functools
 import numbers
 import pickle
 from collections import defaultdict
-from .processes import PlacedPhysicsProcess, PhysicsList
+from .processes import PhysicsList
 
 import numpy as np
 from ocelot.cpbd.csr import CSR
@@ -29,7 +29,6 @@ from ocelot.cpbd.magnetic_lattice import (
 from ocelot.cpbd.beam import twiss_parray_slice, get_envelope
 from ocelot.cpbd.transformations import TransferMap
 from ocelot.cpbd.transformations.transformation import Transformation
-from ocelot.cpbd.elements.optic_element import OpticElement
 from ocelot.cpbd.beam import twiss_iterable_to_df
 from ocelot.cpbd.optics import Twiss, twiss as oce_calc_twiss
 from ocelot.cpbd.navi import Navigator
@@ -37,14 +36,14 @@ from ocelot.cpbd.beam import optics_from_moments, moments_from_parray
 from ocelot.cpbd.match import match, match_beam
 
 
+from .sequence import MachineSequence, ElementT, ElementAccessType, ElementAccessError
 
 
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.INFO)
 
-ElementT = TypeVar("ElementT", bound=OpticElement)
-ElementAccessType = Optional[Union[int, str, ElementT]]
+
 TrackingStartPoint = Union[ElementAccessType, float]
 ElementSequenceT = list[ElementT]
 
@@ -57,143 +56,30 @@ class TrackingResult:
     dumps: dict[str, ParticleArray] = None
 
 
-class MachineSequence(Sequence):
-    def __init__(self, sequence: list[ElementT], *args, **kwargs):
-        """Name addressable sequence of elements"""
-        super().__init__(*args, **kwargs)
-        self._sequence = list(flatten(sequence))
-
-    def __getitem__(self, key: ElementAccessType) -> Union[ElementT, MachineSequence]:
-        if isinstance(key, slice):
-            start, step, stop = key.start, key.step, key.stop
-            if step is not None:
-                raise TypeError("Slice step is not supported")
-
-            if start is None:
-                start = 0
-            if stop is None:
-                stop = -1
-
-            start = self._normalise_key(start)
-            stop = self._normalise_key(stop)
-            return MachineSequence(self._sequence[start:stop])
-        else:
-            index = self._normalise_key(key)
-            return self._sequence[index]
-
-    def closed_interval(
-        self, start: ElementAccessType = None, stop: ElementAccessType = None
-    ) -> MachineSequence:
-        """Get interval including the stop element at the end (unlike __getitem__)"""
-        if start is None:
-            start = 0
-        istart = self._normalise_key(start)
-        if stop is None:
-            stop = -1
-        istop = self._normalise_key(stop)
-        # Closed interval so add 1:
-        istop += 1
-        return self[istart:istop]
-
-    def __iter__(self):
-        yield from iter(self._sequence)
-
-    def _normalise_key(self, key: ElementAccessType) -> int:
-        # If already an int then just return it
-        if isinstance(key, int):
-            if key >= 0:
-                return key
-            # Convert negative index into a positive one.
-            return key % len(self)
-
-        # If a name of an element find the index
-        if isinstance(key, str):
-            return self.names().index(key)
-
-        # if an element instance then get the key
-        try:
-            return self._sequence.index(key)
-        except (TypeError, ValueError):
-            pass
-
-        raise ValueError(f"Unable to normalise key: {key}")
-
-    def __len__(self) -> int:
-        return len(self._sequence)
-
-    def __add__(self, other: Iterable[ElementT]) -> MachineSequence:
-        return type(self)(list(self) + list(flatten(other)))
-
-    def __str__(self) -> str:
-        strs = "\n".join([repr(s) for s in self._sequence])
-        return f"<{type(self).__name__}:\n{strs}>"
-
-    def __contains__(self, key: ElementAccessType) -> bool:
-        try:
-            return key in self._sequence or key.id in self.names()
-        except AttributeError:
-            return key in self.names()
-
-    def names(self) -> list[str]:
-        return [x.id for x in self]
-
-    def element_attributes(self, key, property_name: str) -> np.array:
-        indices = [i for (i, ele) in enumerate(self) if (ele.id == key) or (ele is key)]
-        if not indices:
-            raise KeyError
-        result = []
-        for i in indices:
-            result.append(getattr(self[i], property_name))
-        return np.squeeze(np.array(result))
-
-    def length(self) -> float:
-        return sum(x.l for x in self)
-
-    def element_s(self, key: Union[str, ElementT]) -> float:
-        indices = [i for (i, ele) in enumerate(self) if (ele.id == key) or (ele is key)]
-
-        if not indices:
-            raise KeyError
-
-        result = []
-        s = 0
-        for i, element in enumerate(self):
-            length = element.l
-            s += length
-            if i in indices:
-                result.append(s)
-        return np.squeeze(np.array(result))
-
-    def __repr__(self) -> str:
-        return f"<MachineSequence: {repr(self._sequence)}>"
-
-    def reverse(self):
-        """reverse *IN PLACE*"""
-        self._sequence.reverse()
 
 
-class FELSection:
-    def __init__(self, sequence: MachineSequence):
-        self.sequence = MachineSequence(sequence)
+# class FELSection:
+#     def __init__(self, sequence: MachineSequence):
+#         self.sequence = MachineSequence(sequence)
 
-    @property
-    def start(self):
-        return self.sequence[0].id
+#     @property
+#     def start(self):
+#         return self.sequence[0].id
 
-    @property
-    def stop(self):
-        return self.sequence[-1].id
+#     @property
+#     def stop(self):
+#         return self.sequence[-1].id
 
-    def get_sequence(self, idstart=None, idstop=None, felconfig=None):
-        if felconfig is not None:
-            return felconfig.new_sequence(self.sequence)
-        else:
-            return deepcopy(self.sequence)
+#     def get_sequence(self, idstart=None, idstop=None, felconfig=None):
+#         if felconfig is not None:
+#             return felconfig.new_sequence(self.sequence)
+#         else:
+#             return deepcopy(self.sequence)
 
-    @classmethod
-    @property
-    def name(cls):
-        return cls.__name__
+#     @classmethod
+#     @property
+#     def name(cls):
+#         return cls.__name__
 
 
 
@@ -211,7 +97,7 @@ class Linac:
         self.sequence = sequence
         self.twiss0 = twiss0
         self.felconfig = felconfig if felconfig else None
-        self.default_start = default_start if default_start else None
+        # self.default_start = default_start if default_start else None
         self.physics_list = physics_list if physics_list else PhysicsList([])
 
         # self._check_sections_for_duplicate_start_stops()
@@ -233,16 +119,6 @@ class Linac:
             felconfig2 = EuXFELSimConfig()
 
         return felconfig | felconfig2
-
-    def _check_sections_for_duplicate_start_stops(self) -> None:
-        sections = self.sections
-        previous_section = sections[0]
-
-        for section in sections[1:]:
-            if section.sequence[0] == previous_section.sequence[-1]:
-                raise ValueError(
-                    "Overlapping sequence: {previous_section}: {section}, {previous_stop}"
-                )
 
     def _calculate_twiss_between_two_points(
         self, twiss0: Twiss, start=None, stop=None, felconfig=None
@@ -399,75 +275,58 @@ class Linac:
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
         mlat = MagneticLattice(sequence, method={"global": felconfig.physics.method})
         navi = Navigator(mlat, unit_step=felconfig.physics.unit_step)
-
-        sequence_before = self._get_sequence_before_start(start)
-        sequence_after = self._get_sequence_after_stop(stop)
-
+        
         if not physics:
             return navi
 
-        # Now attach physics to the navigator we made above.
-        LOG.info(f'Adding procs 2 Navi:  Sequence start = "{start}", stop = "{stop}"')
-        for section in self.sections:
-            for (
-                process,
-                proc_start_name,
-                proc_stop_name,
-            ) in section.build_physics_processes(felconfig.physics):
-                assert isinstance(proc_start_name, str) or proc_start_name is None
-                assert isinstance(proc_stop_name, str) or proc_stop_name is None
+        names_before = set(self._get_sequence_before_start(start).names())
+        names_sequence = set(sequence.names())
+        names_after = set(self._get_sequence_after_stop(stop).names())
+        all_names = names_before | names_after | names_sequence
 
-                # Special values meaning at the start/end of the section.
-                if proc_start_name is None:
-                    proc_start = None
-                if proc_stop_name is None:
-                    proc_stop = None
+        for placed_process in self.physics_list:
+            start = placed_process.start_name
+            stop = placed_process.stop_name
+            process = placed_process.process
 
-                if (
-                    proc_start_name == proc_stop_name and process in sequence
-                ):  # For occasion when you want to attach an element to the first
-                    pass
-                # If process stops before the sequene even begins, then skip.
-                elif proc_stop_name in sequence_before:
-                    LOG.debug(
-                        f"From Section {type(self).__name__} - Skipping {process}: start={proc_start_name}, stop={proc_stop_name}. Reason: Process precedes sequence"
-                    )
-                    continue
+            if start not in all_names:
+                raise ElementAccessError(f"Element named {start} not found")
+            if stop not in all_names:
+                from IPython import embed; embed()
+                raise ElementAccessError(f"Element named {stop} not found")
 
-                # If process doesn't even start until after the sequence ends, then skip
-                elif proc_start_name in sequence_after:
-                    LOG.debug(
-                        f"From Section {type(self).__name__} - Skipping {process}: start={proc_start_name}, stop={proc_stop_name}. Reason: Process follows sequence"
-                    )
-                    continue
+            # If process stops before sequence starts, then skip.
+            if stop in names_before:
+                LOG.debug(f"Skipping process that stops before sequence starts: {placed_process}")
+                continue
 
-                # If the process starts before, then
-                if proc_start_name in sequence_before:
-                    proc_start = sequence[0]
-                elif proc_start_name is not None:
-                    proc_start = sequence[proc_start_name]
+            # If process stops after sequence ends, then skip.
+            if start in names_after:
+                LOG.debug(f"Skipping process that starts after sequence stops: {placed_process}")
+                continue
 
-                if proc_stop_name in sequence_after:
-                    proc_stop = sequence[-1]
-                elif proc_stop_name is not None:
-                    proc_stop = sequence[proc_stop_name]
+            # If process starts before sequence starts, then set start to sequence start.
+            if start in names_before:
+                start = sequence[0].id
 
-                # Set energy for CSR processes incase it needs it.
-                if isinstance(process, CSR):
-                    self._set_csr_process_energy(
-                        process, proc_start_name, proc_stop_name, felconfig=felconfig
-                    )
+            # If procss stops after sequence stops, then set stop to sequence stop.
+            if stop in names_after:
+                stop = sequence[-1].id
 
-                navi.add_physics_proc(process, proc_start, proc_stop)
+            # Set energy for CSR processes incase it needs it.
+            if isinstance(process, CSR):
+                self._set_csr_process_energy(process, start, stop, felconfig=felconfig)
+            LOG.info(f"Adding {process}: start={start}, stop={stop}:")
 
-                # LOG.info(
-                #     f"From Section {type(section).__name__} - Adding {process}: start={proc_start_name}, stop={proc_stop_name}"
-                # )
+            LOG.info(repr(process))
 
-                LOG.info(
-                    f"From Section {type(section).__name__} - Adding {process}: start={proc_start_name}, stop={proc_stop_name}:"
-                )
-                LOG.info(repr(process))
+            istart = sequence.names().index(start)
+            istop = sequence.names().index(stop)
+
+            element_start = sequence[istart]
+            element_stop = sequence[istop]
+
+            navi.add_physics_proc(process, element_start, element_stop)
 
         return navi
 
@@ -475,13 +334,13 @@ class Linac:
         if start is None:
             return MachineSequence([])
         else:
-            return self.get_sequence(stop=start)
+            return self.get_sequence(stop=start)[:-1]
 
     def _get_sequence_after_stop(self, stop: ElementAccessType) -> MachineSequence:
         if stop is None:
             return MachineSequence([])
         else:
-            return self.get_sequence(start=stop)
+            return self.get_sequence(start=stop)[1:]
 
     def _set_csr_process_energy(
         self,
@@ -505,6 +364,8 @@ class Linac:
         stop: ElementAccessType = None,
         felconfig: EuXFELSimConfig = None,
     ) -> MachineSequence:
+
+        LOG.debug(f"Building sequence, {start=}, {stop=}, {felconfig=}")
         result = self.sequence.closed_interval(start, stop)
         net_felconfig = self._net_felconfig(felconfig2=felconfig)
         return MachineSequence(net_felconfig.new_sequence(result))
@@ -906,7 +767,7 @@ class ChicaneController(Controller):
 
         if not np.isclose(first_drift_length, third_drift_length, atol=1e-6):
             raise ValueError(
-                "Outer chicane drifts have different lengths: {first_drift_length=}, {third_drift_length}="
+                f"Outer chicane drifts have different lengths: {first_drift_length=}, {third_drift_length}="
             )
 
     def _assert_consistency_in_chicane(self, sequence, dipole_indices):
@@ -1053,6 +914,8 @@ class EuXFELSimConfig(SimulationConfig):
         self.components.update({name: {attribute: val} for name, val in zip(names, values)})
 
 
+EuXFELConfig = EuXFELSimConfig
+
 class NoTwiss(PhysProc):
     MATCH = None
 
@@ -1154,7 +1017,8 @@ def _twiss_central_slice(parray, match_slice="Imax", **kwargs):
 
 def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):
     # Put markers everywhere.
-    _, new_markers = insert_markers_by_predicate(
+
+    new_markers = insert_markers_by_predicate(
         navi.lat.sequence, lambda ele: True, before=False, after_suffix=""
     )
 
@@ -1274,9 +1138,9 @@ def _string_to_twiss_match_function(match_string):
     if match_string == "projected":
         twiss_function = get_envelope
     elif match_string.lower() == "emax":
-        twiss_function = functools.partial(_twiss_central_slice, match_slice="EMax")
+        twiss_function = functools.partial(_twiss_central_slice, match_slice="Emax")
     elif match_string.lower() == "imax":
-        twiss_function = functools.partial(_twiss_central_slice, match_slice="IMax")
+        twiss_function = functools.partial(_twiss_central_slice, match_slice="Imax")
     else:
         raise ValueError(f"Unknown match string: {match_string}")
     return twiss_function

@@ -20,7 +20,7 @@ from ocelot.cpbd.elements.optic_element import OpticElement
 import pandas as pd
 import toml
 
-from .fel_track import EuXFELSimConfig, Linac, FELSection
+from .fel_track import EuXFELSimConfig, Linac
 from .optics import START_SIM, MATCH_37, MATCH_52, INJECTOR_MATCHING_QUAD_NAMES
 from .longlist import make_default_longlist
 from .astra import load_reference_0320_100k_distribution
@@ -440,8 +440,8 @@ def longlist_to_ocelot(
 
 
 def generate_real_i1_matched_config(i1_sequence, twiss0, realconfig):
-    i1_dummy_section = FELSection(i1_sequence)
-    just_injector = Linac([i1_dummy_section], twiss0, felconfig=realconfig)
+    # i1_dummy_section = FELSection(i1_sequence)
+    just_injector = Linac(i1_sequence, twiss0, felconfig=realconfig)
     match_52_twiss_constraint = make_default_longlist().get_optics_constraint(MATCH_52)
     real_matched_conf = just_injector.match(
         just_injector.twiss0,

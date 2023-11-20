@@ -45,84 +45,12 @@ SC_MESH = [63, 63, 63]
 SC_RANDOM_MESH = True
 CSR_N_BIN = 400
 
-
-def make_csr(*, sigma_min, traj_step, apply_step, n_bin=None, step=None):
-    csr = CSR()
-    csr.sigma_min = sigma_min
-    csr.traj_step = traj_step
-    csr.apply_step = apply_step
-    if n_bin is not None:
-        csr.n_bin = n_bin
-    if step is not None:
-        csr.step = step
-    return csr
-
-
-def make_laser_modulator(dE=300.):
-    lh = LaserModulator()
-    lh.dE = dE
-    lh.sigma_l = 300
-    lh.sigma_x = 300e-6
-    lh.sigma_y = 300e-6
-    lh.z_waist = None
-    return lh
-
-
-def make_beam_smoother():
-    smproc = SmoothBeam()
-    
-
-def make_beam_transform(*, betx, bety, alfx, alfy, tr_slice):
-    tws = Twiss()
-    tws.beta_x = betx
-    tws.beta_y = bety
-    tws.alpha_x = alfx
-    tws.alpha_y = alfy
-    tws.gamma_x = (1 + alfx**2) / betx
-    tr = BeamTransform(tws=tws)
-    tr.slice = tr_slice
-    return tr
-
-
-def make_wake(rel_path, *, factor, step=None, w_sampling=None, filter_order=None):
-    wake = Wake()
-    wake.wake_table = WakeTable(Path(__file__).parent / rel_path)
-    wake.factor = factor
-    if step is not None:
-        wake.step = step
-
-    if w_sampling is not None:
-        wake.w_sampling = w_sampling
-    if filter_order is not None:
-        wake.filter_order = filter_order
-
-    return wake
-
-
-def make_space_charge(*, step, nmesh_xyz=None, random_mesh=None):
-    sc = SpaceCharge()
-    sc.step = step
-    if nmesh_xyz is not None:
-        sc.nmesh_xyz = nmesh_xyz
-    if random_mesh is not None:
-        sc.random_mesh = random_mesh
-    return sc
-
-
 class DontTrackHereError(NotImplementedError):
     pass
 
 
-class ExceptionalProc(PhysProc):
-    def __init__(self, exception_message):
-        super().__init__()
-        self.exception_message = exception_message
-
-    def apply(self, parray, dz):
-        raise DontTrackHereError(self.exception_message)
 
 
-    
 class FELSection:
     pass
 
@@ -265,7 +193,7 @@ class I1D(FELSection):
 
 
 # def make_processes(
-    
+
 # class DL(FELSection):
 #     def __init__(self):
 #         cell = MachineSequence(i1.cell + l1.cell)
@@ -654,4 +582,3 @@ class I1D(FELSection):
 #             wake_add, start=collimator3_stop, stop=collimator3_stop
 #         )
 #         self.add_physics_process(wake_add1, start=stN10_stop, stop=stN10_stop)
-    

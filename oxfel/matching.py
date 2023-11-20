@@ -1,17 +1,33 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from functools import partial
+from copy import deepcopy
+import logging
 
-from ocelot.cpbd.beam import Twiss, get_envelope
+import numpy as np
+from ocelot.cpbd.beam import Twiss, get_envelope, twiss_parray_slice
+from ocelot.cpbd.track import track
+from ocelot.cpbd.optics import twiss
+from ocelot.cpbd.magnetic_lattice import MagneticLattice
+from ocelot.cpbd.match import match
 
+
+from .tracking import start_sim_to_match_37
+from .optics import MATCH_37, MATCH_52, default_match_point_optics, INJECTOR_MATCHING_QUAD_NAMES
+from .fel_track import EuXFELSimConfig
+
+
+LOG = logging.getLogger(__name__)
 
 @dataclass
 class MismatchSummary:
     bmag_x: float
-    bmad_y: float
+    bmag_y: float
     l2loss: float
 
 
 class BacktrackingLinearMatcher:
+    MAX_ITER = 10_000
     def __init__(self, navi: Navigator, parray0: ParticleArray,
                  goal_twiss: Twiss, quad_names: list[str],
                  twiss_function: Callable[[ParticleArray], Twiss] = get_envelope):
@@ -85,7 +101,8 @@ class BacktrackingLinearMatcher:
                                   self._get_constraint(),
                                   self._quad_instances_from_navi(),
                                   twiss0,
-                                  verbose=True)
+                                  verbose=True,
+                                  max_iter=self.MAX_ITER)
         return matched_strengths
 
     def match(self, n: int = 1, quad_strengths=None) -> list[float]:
@@ -139,14 +156,14 @@ class BacktrackingLinearMatcher:
                                   self._get_constraint(),
                                   self._quad_instances_from_navi(),
                                   backtracked_twiss0,
-                                  verbose=False)
+                                  verbose=True,
+                                  max_iter=self.MAX_ITER)
         # And track forwards using these new matched strengths
         self.track_forwards(matched_strengths)
 
         # Finally we return this new parray1 at the match point and
         # the new matched quad strengths we derived.
         return matched_strengths
-
 
 
 def get_unary_twiss_function(twiss_type, **twissfnkwargs):
@@ -187,6 +204,43 @@ def match_with_backtracking(navi: Navigator,
     """
     twiss_function = get_unary_twiss_function(match, **twissfnkwargs)
     matcher = BacktrackingLinearMatcher(navi, parray0, twiss_goal, quad_names, twiss_function)
+    maxiter = 1
     quad_strengths = matcher.match(maxiter)
+    # from IPython import embed; embed()
+    print(matcher.goal_twiss, matcher.twiss_function(matcher.parray1))
 
     return quad_strengths, matcher.mismatch_summary()
+
+
+def match_injector(fel, parray032, felconfig=None, match="projected"):
+    parray37 = start_sim_to_match_37(fel, parray032, felconfig=felconfig)
+    navi = fel.to_navigator(start=MATCH_37, stop=MATCH_52, felconfig=felconfig)
+
+    match52 = default_match_point_optics().set_index("id").loc["MATCH.52.I1"]
+
+    goal_twiss = Twiss(**dict(alpha_x=match52.alpha_x,
+                              alpha_y=match52.alpha_y,
+                              beta_x=match52.beta_x,
+                              beta_y=match52.beta_y,
+                              id="MATCH.52.I1"))
+
+    strengths, mismatch = match_with_backtracking(navi, parray37,
+                                                  goal_twiss,
+                                                  INJECTOR_MATCHING_QUAD_NAMES,
+                                                  maxiter=1,
+                                                  match=match)
+
+    if felconfig is None:
+        felconfig = EuXFELSimConfig()
+
+    felconfig.update_components(INJECTOR_MATCHING_QUAD_NAMES, strengths, "k1")
+
+    return felconfig, mismatch
+
+
+def _get_element_instances_from_mlat(mlat, names):
+    def f(ele):
+        return ele.id in names
+
+    indices = mlat.find_indices_by_predicate(f)
+    return [mlat.sequence[i] for i in indices]

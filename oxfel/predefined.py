@@ -9,6 +9,7 @@ import pandas as pd
 from oxfel.accelerator.lattice import i1, i1d
 from oxfel.fel_track import Linac, EuXFELSimConfig, MachineSequence
 from oxfel.conversion import TRACKING_CONF_NAME, REAL_CONF_NAME, get_bunchsizerc_path
+from oxfel.processes import load_default_physics_lists, PhysicsList
 
 # I1D_SECTIONS = [G1, A1, AH1, LH, I1D]
 # B1D_SECTIONS = [G1, A1, AH1, LH, DL, BC0, L1, BC1, B1D]
@@ -20,6 +21,8 @@ from oxfel.conversion import TRACKING_CONF_NAME, REAL_CONF_NAME, get_bunchsizerc
 TWISS0 = i1.tws0
 
 I1D_SUBSEQUENCES = ["i1", "i1d"]
+B2D_SUBSEQUENCES = []
+
 
 def _init_module_level_cells(module_names):
     result = []
@@ -58,8 +61,10 @@ class ModelBuilder:
         self, *, model_type: Union[str, ModelType] = ModelType.DESIGN
     ) -> Linac:
         felconfig = self._get_fel_config(model_type)
+        physics_list = self._get_physics_list()
         fel = Linac(
-            _init_module_level_cells(self.subsequence_names), twiss0=self.twiss0, felconfig=felconfig
+            _init_module_level_cells(self.subsequence_names), twiss0=self.twiss0, felconfig=felconfig,
+            physics_list=physics_list
         )
         return fel
 
@@ -85,10 +90,18 @@ class ModelBuilder:
 
         return felconfig
 
+    def _get_physics_list(self):
+        lists = load_default_physics_lists()
+        sequence_lists = [lists[name] for name in self.subsequence_names]
+        result = PhysicsList()
+        for sublist in sequence_lists:
+            result.extend(sublist)
+        return result
+
 
 cat_to_i1d = ModelBuilder(TWISS0, I1D_SUBSEQUENCES, "i1d")
 # cat_to_b1d = ModelBuilder(TWISS0, B1D_SECTIONS, "b1d")
-# cat_to_b2d = ModelBuilder(TWISS0, B2D_SECTIONS, "b2d")
+cat_to_b2d = ModelBuilder(TWISS0, B2D_SUBSEQUENCES, "b2d")
 # cat_to_tld = ModelBuilder(TWISS0, TLD_SECTIONS, "tld")
 # cat_to_t4d = ModelBuilder(TWISS0, T4D_SECTIONS, "t4d")
 
@@ -101,28 +114,3 @@ def all_models(model_type) -> dict:
             models[name] = obj(model_type=model_type)
     return models
 
-
-def match_injector(fel, parray032, felconfig=None, match="projected"):
-    parray37 = start_sim_to_match_37(fel, parray032, felconfig=felconfig)
-    navi = fel.to_navigator(start=MATCH_37, stop=MATCH_52)
-
-    match52 = default_match_point_optics().set_index("id").loc["MATCH.52.I1"]
-
-    goal_twiss = Twiss(**dict(alpha_x=match52.alpha_x,
-                              alpha_y=match52.alpha_y,
-                              beta_x=match52.beta_x,
-                              beta_y=match52.beta_y,
-                              id="MATCH.52.I1"))
-
-    strengths, mismatch = match_with_backtracking(navi, parray37,
-                                                  goal_twiss,
-                                                  INJECTOR_MATCHING_QUAD_NAMES,
-                                                  maxiter=1,
-                                                  match=match)
-
-    if felconfig is None:
-        felconfig = EuXFELSimConfig()
-
-    felconfig.update_components(INJECTOR_MATCHING_QUAD_NAMES, strengths, "k1")
-
-    return felconfig, mismatch
