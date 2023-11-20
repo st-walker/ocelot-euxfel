@@ -1,0 +1,53 @@
+i1:
+  physics:
+    - process: RaisingProc
+      kwargs: {"exception_message": "Tracking in G1 is unsupported and should be left to ASTRA."}
+      description: "No tracking allowed before 3.2 so throw an exception if trying to do so."
+      start: "STSEC.23.I1"
+      stop: "stop_astra"
+
+    - process: SmoothBeam
+      kwargs: {"mslice": 1000}
+      description: "Smooth beam at the start of the simulation at 3.2m"
+      start: "start_ocelot"
+      stop: "start_ocelot"
+
+    # - process: CSR
+    #   kwargs: {traj_step: 0.0005, apply_step: 0.005, sigma_min: 0.1}
+    #   description: "CSR in the LH chicane"
+    #   start: "STLAT.47.I1"
+    #   stop: "DUMP.CSR.START"
+
+    - process: Wake
+      kwargs: {"w_sampling": 1000, "filter_order": 10, "filename": "wake_table_A1.dat", "factor": 1, "step": 10}
+      start: "start_ocelot"
+      stop: "a1_sim_stop"
+      description: "wakes in A1 modules"
+
+    - process: SpaceCharge
+      kwargs: {"random_mesh": true, "nmesh_xyz": [63, 63, 63], "step": 1}
+      start: "start_ocelot"
+      stop: "a1_sim_stop"
+      description: "space charge with small step during low energy of A1 module"
+      
+    - process: SpaceCharge
+      kwargs: {"random_mesh": true, "nmesh_xyz": [63, 63, 63], "step": 5}
+      description: "space charge with coarser step now due to higher energy after first a1 cavity"
+      start: "ah1_sim_start"
+      stop: "DUMP.CSR.START"
+
+      
+i1d:
+  physics:
+    # - process: CSR
+    #   kwargs: {traj_step: 0.0005, apply_step: 0.005, sigma_min: 0.1}
+    #   description: "CSR in the dump dipole"
+    #   start: "DUMP.CSR.START"
+    #   stop: "ENSEC.66.I1D"
+
+
+    - process: SpaceCharge
+      kwargs: {"random_mesh": true, "nmesh_xyz": [63, 63, 63], "step": 5}
+      start: "DUMP.CSR.START"
+      stop: "ENSEC.66.I1D"
+      description: "space charge from just before I1D dump dipole to end of I1D"
