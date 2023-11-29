@@ -20,3 +20,5 @@ include oxfel/accelerator/lattice/component_list_2023.07.01.xls
 include oxfel/accelerator/lattice/conversion-config.toml
 include oxfel/accelerator/lattice/real-matched-conf.toml
 include oxfel/accelerator/lattice/tracking-matched-conf.toml
+include oxfel/accelerator/lattice/i1d-real-optics.pcl
+include oxfel/accelerator/lattice/processes.yaml
