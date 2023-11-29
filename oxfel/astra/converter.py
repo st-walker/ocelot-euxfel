@@ -1,5 +1,4 @@
 import numpy as np
-import latdraw
 from textwrap import dedent
 from collections import Counter
 import latdraw

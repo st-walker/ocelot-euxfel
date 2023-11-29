@@ -1,7 +1,7 @@
 [tool]
 [tool.poetry]
 name = "oxfel"
-version = "0.2.0"
+version = "0.2.1a1"
 homepage = "https://github.com/st-walker/esmesim"
 description = "The official UNOFFICIAL model of the EuXFEL in OCELOT"
 authors = ["Stuart Walker <stuart.walker@desy.de>"]
@@ -24,9 +24,10 @@ packages = [
 [tool.poetry.dependencies]
 python = ">=3.9.7,<4.0"
 matplotlib = "^3.7.1"
-numpy = "1.24.3"
 pandas = "^2.0.2"
 toml = "^0.10.2"
+numpy = ">=1.24.3"
+latdraw = "^0.1.1a0"
 
 
 [tool.poetry.scripts]

@@ -126,7 +126,7 @@ class Linac:
         # self._check_twiss_position_matches(twiss0, start)
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
         mlat = MagneticLattice(sequence)
-        full_twiss = oce_calc_twiss(mlat, twiss0, return_df=True)
+        full_twiss = oce_calc_twiss(mlat, tws0=twiss0, return_df=True)
         return full_twiss, mlat
 
     def design_twiss(self, stop: ElementAccessType = None):
