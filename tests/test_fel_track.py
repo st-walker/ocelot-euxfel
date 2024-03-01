@@ -34,7 +34,6 @@ def test_to_navigator(linac):
 
     sequence = navi.lat.sequence
 
-    from IPython import embed; embed()
     assert np.isclose(linac.length(), navi.lat.totalLen)
     assert sequence[0].id == linac.sections[0].sequence[0].id
     assert sequence[-1].id == linac.sections[-1].sequence[-1].id
