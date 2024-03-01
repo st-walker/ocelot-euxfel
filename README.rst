@@ -2,14 +2,10 @@
 oxfel
 =====
 
-![example workflow]
-(https://github.com/st-walker/ocelot-euxfel/actions/workflows/ci.yaml/badge.svg)
-
-
 .. image:: https://img.shields.io/pypi/v/oxfel.svg
         :target: https://pypi.python.org/pypi/oxfel
 
-.. image:: https://img.shields.io/travis/st-walker/oxfel.svg
+.. image:: https://github.com/st-walker/ocelot-euxfel/actions/workflows/ci.yaml/badge.svg
         :target: https://travis-ci.com/st-walker/oxfel
 
 .. image:: https://readthedocs.org/projects/oxfel/badge/?version=latest
