@@ -6,7 +6,7 @@ oxfel
         :target: https://pypi.python.org/pypi/oxfel
 
 .. image:: https://github.com/st-walker/ocelot-euxfel/actions/workflows/ci.yaml/badge.svg
-        :target: https://travis-ci.com/st-walker/oxfel
+        :target: https://github.com/st-walker/ocelot-euxfel/actions/workflows/ci.yaml
 
 .. image:: https://readthedocs.org/projects/oxfel/badge/?version=latest
         :target: https://oxfel.readthedocs.io/en/latest/?version=latest
