@@ -2,6 +2,8 @@
 oxfel
 =====
 
+![example workflow](https://github.com/st-walker/ocelot-euxfel/actions/workflows/ci.yaml/badge.svg)
+
 
 .. image:: https://img.shields.io/pypi/v/oxfel.svg
         :target: https://pypi.python.org/pypi/oxfel
@@ -12,6 +14,7 @@ oxfel
 .. image:: https://readthedocs.org/projects/oxfel/badge/?version=latest
         :target: https://oxfel.readthedocs.io/en/latest/?version=latest
         :alt: Documentation Status
+
 
 
 
