@@ -5,3 +5,4 @@ toml==0.10.2
 ocelot @ git+https://github.com/ocelot-collab/ocelot@dev
 latdraw==0.1.1a3
 xlrd==2.0.1
+importlib-resources
