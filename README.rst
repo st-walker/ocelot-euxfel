@@ -2,16 +2,16 @@
 oxfel
 =====
 
-
 .. image:: https://img.shields.io/pypi/v/oxfel.svg
         :target: https://pypi.python.org/pypi/oxfel
 
-.. image:: https://img.shields.io/travis/st-walker/oxfel.svg
-        :target: https://travis-ci.com/st-walker/oxfel
+.. image:: https://github.com/st-walker/ocelot-euxfel/actions/workflows/ci.yaml/badge.svg
+        :target: https://github.com/st-walker/ocelot-euxfel/actions/workflows/ci.yaml
 
 .. image:: https://readthedocs.org/projects/oxfel/badge/?version=latest
         :target: https://oxfel.readthedocs.io/en/latest/?version=latest
         :alt: Documentation Status
+
 
 
 
