@@ -2,7 +2,8 @@
 oxfel
 =====
 
-![example workflow](https://github.com/st-walker/ocelot-euxfel/actions/workflows/ci.yaml/badge.svg)
+![example workflow]
+(https://github.com/st-walker/ocelot-euxfel/actions/workflows/ci.yaml/badge.svg)
 
 
 .. image:: https://img.shields.io/pypi/v/oxfel.svg
