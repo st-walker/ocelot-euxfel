@@ -4,7 +4,9 @@ import pickle
 from enum import Enum, auto
 from typing import Union
 from importlib_resources import files
+
 import pandas as pd
+from ocelot import Twiss
 
 from oxfel.accelerator.lattice import i1, i1d
 from oxfel.fel_track import Linac, EuXFELSimConfig, MachineSequence
@@ -52,7 +54,7 @@ def _make_tracking_felconfig() -> EuXFELSimConfig:
 
 
 class ModelBuilder:
-    def __init__(self, twiss0, subsequence_names, destination):
+    def __init__(self, twiss0: Twiss, subsequence_names: list[str], destination: str):
         self.twiss0 = twiss0
         self.subsequence_names = subsequence_names
         self.destination = destination

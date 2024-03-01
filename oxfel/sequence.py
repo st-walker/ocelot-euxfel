@@ -9,7 +9,7 @@ from ocelot.cpbd.magnetic_lattice import flatten
 from ocelot.cpbd.elements.optic_element import OpticElement
 
 ElementT = TypeVar("ElementT", bound=OpticElement)
-ElementAccessType = Optional[Union[int, str, ElementT]]
+ElementAccessType = Union[int, str, ElementT]
 
 
 class ElementAccessError(KeyError):

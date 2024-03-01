@@ -91,13 +91,11 @@ class Linac:
         twiss0: Twiss,
         outdir: os.PathLike = "./",
         felconfig=None,
-        default_start=None,
         physics_list=None
     ):
         self.sequence = sequence
         self.twiss0 = twiss0
         self.felconfig = felconfig if felconfig else None
-        # self.default_start = default_start if default_start else None
         self.physics_list = physics_list if physics_list else PhysicsList([])
 
         # self._check_sections_for_duplicate_start_stops()
@@ -147,8 +145,35 @@ class Linac:
         return twiss, mlat
 
     def calculate_twiss(
-        self, twiss0, start, stop=None, felconfig=None
+        self, twiss0: Twiss0, start: ElementAccessType, stop: Optional[ElementAccessType] = None, felconfig: Optional[EuXFELSimConfig] = None
     ) -> tuple[pd.DataFrame, MagneticLattice]:
+        """
+        Calculates the Twiss parameters for the Linac instance over a specified section.
+
+        This method computes the linear optics (Twiss parameters) between two points specified by `start` and `stop`
+        within the magnetic lattice of a linear accelerator (Linac). It leverages an initial set of Twiss parameters
+        (`twiss0`) and optionally considers an EuXFELSimXonfig during the computation.
+
+        Parameters:
+        - twiss0: A structure representing the initial Twiss parameters from which the calculation starts. This structure
+                  must be compatible with the expected format for Twiss parameters in the Ocelot framework.
+        - start (ElementAccessType): The name or identifier of the starting element in the magnetic lattice from which the calculation
+                       begins.
+        - stop (Optional[str]): The name or identifier of the stopping element in the magnetic lattice at which the
+                                calculation ends. If `None`, the calculation proceeds to the end of the lattice or until
+                                another stopping condition is met.
+        - felconfig (Optional[EuXFELSimConfig]): An optional configuration for the Linac section.
+
+        Returns:
+        A tuple containing two elements:
+        - A pandas DataFrame containing the calculated Twiss parameters across the specified section of the Linac. Each row
+          corresponds to a position within the magnetic lattice, and columns include relevant Twiss parameters and possibly
+          additional information depending on the calculation specifics.
+        - An instance of `MagneticLattice` representing the segment of the Linac over which the Twiss parameters were
+          calculated. This object provides access to the magnetic lattice structure, including elements and their
+          properties, over the specified range.  Useful for plotting.
+
+        """
         felconfig_net = self._net_felconfig(felconfig)
         LOG.debug(f'Calculating linear optics between "{start}" and "{stop}"')
         # Final stretch, between the matching point and the provided "stop"
@@ -275,7 +300,7 @@ class Linac:
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
         mlat = MagneticLattice(sequence, method={"global": felconfig.physics.method})
         navi = Navigator(mlat, unit_step=felconfig.physics.unit_step)
-        
+
         if not physics:
             return navi
 
@@ -364,7 +389,6 @@ class Linac:
         stop: ElementAccessType = None,
         felconfig: EuXFELSimConfig = None,
     ) -> MachineSequence:
-
         LOG.debug(f"Building sequence, {start=}, {stop=}, {felconfig=}")
         result = self.sequence.closed_interval(start, stop)
         net_felconfig = self._net_felconfig(felconfig2=felconfig)
@@ -372,6 +396,7 @@ class Linac:
 
     def length(self) -> float:
         x = 0
+        from IPython import embed; embed()
         for section in self.sections:
             x += section.sequence.length()
         return x
@@ -418,6 +443,7 @@ class Linac:
         felconfig: Optional[EuXFELSimConfig] = None,
         match: Union[Callable[[ParticleArray], Twiss], str] = "projected",
     ):
+        from IPython import embed; embed()
         felconfig = self._net_felconfig(felconfig)
 
         navi = self.to_navigator(start=start, stop=stop, felconfig=felconfig)
@@ -506,9 +532,30 @@ class Linac:
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
         felconfig: Optional[EuXFELSimConfig] = None,
-        verbose=True,
+        verbose: bool = True,
         **match_kwargs,
     ) -> EuXFELSimConfig:
+        """
+        Match the optics for this Linac instance starting with the
+            input optics twiss0 at position `start` and ending at `stop`.
+            The elements kwarg should be a list of names of elements that
+            will be varied (e.g. most likely quads).  
+
+        Parameters:
+        - twiss0 (Twiss): The initial, input twiss to be propagated through the lattice.
+        - elements (list[str]): The names of the Quadrupoles whose strengths are to be varied.
+        - constraints (dict[str: dict[str, float]]): The constraints, of the same form as required by `ocelot.match.match`.
+        - start (ElementAccessType, optional): Name/index of first element to be tracked from.  If None, start from beginning of the sequence.
+        - stop (ElementAccessType, optional): Name/index of last element to be tracked to.  If None, stop at end of the sequence.
+        - felconfig (Optional[EuXFELSimConfig], optional): Optional FELConfig instance to be applied to the sequence before matching.
+        - verbose (bool, optional): Description of verbose. If True, provides detailed logging. Default is True.
+        - match_kwargs (dict): Additional keyword arguments for matching.
+
+        Returns:
+        - EuXFELSimConfig: The EuXFELSimConfig with matched Quadrupoles.
+
+        """
+
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
         lat_matching = MagneticLattice(sequence)
 
@@ -524,6 +571,7 @@ class Linac:
         strengths = match(
             lat_matching, constraints, elements, twiss0, verbose=verbose, **match_kwargs
         )
+
 
         # Apply the result to the simulation config.
         new_conf = deepcopy(self._net_felconfig(felconfig))

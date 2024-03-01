@@ -49,7 +49,7 @@ TRACKING_CONF_NAME = "tracking-matched-conf.toml"
 REAL_CONF_NAME = "real-matched-conf.toml"
 
 
-def get_bunchsizerc_path(beam_destination):
+def get_bunchsizerc_path(beam_destination: str) -> Path:
     # e.g. i1d, b2d, tld, etc..
     outdir = files("oxfel.accelerator.lattice")
     return outdir / "{}-real-optics.pcl".format(beam_destination)
