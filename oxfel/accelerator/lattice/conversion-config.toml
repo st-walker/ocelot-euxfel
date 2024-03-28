@@ -1,3 +1,21 @@
+# Order of precedence in the switchyard:
+# First we go to TLD
+# Then we go to SA2 (t5d)
+# Then we go to SA1/3. (t4d)
+# Really it could not be any other way.
+
+[models]
+[models.i1d]
+sections = ["i1", "i1d"]
+[models.b1d]
+sections = ["i1", "l1", "bld"]
+[models.b2d]
+sections = ["i1", "l1", "l2", "b2d"]
+[models.tld]
+sections = ["i1", "l1", "l2", "l3", "cl", "tld"]
+[models.t5d]
+sections = ["i1", "l1", "l2", "l3", "cl", ""]
+
 [sections]
 
 [sections.I1]
@@ -51,20 +69,73 @@ stop_name1 = "ENSEC.480.B2D"
 start_name1 = "STSUB.466.B2"
 stop_name1 = "ENSEC.1652.L3"
 
+#        csr_start = t4.t4_start_csr  #!!
+
 [sections.L3.new_markers]
 stop_l3 = { ref = "CFY.1651.L3", location = "before"}
 
 [sections.CL]
 start_name1 = "STSEC.1652.CL"
+stop_name1 = "ENSEC.1854.CL"
+
+
+# SWITCHYARD SECTOIN
+
+[sections.TL1TL2]
+# Starts after CL and goes as far as possible branch to TLD
+start_name1 = "STSEC.1854.TL"
 stop_name1 = "ENSUB.1980.TL"
 
+
+[sections.TL3TL4]
+# Starts at end of TL1TL2 and goes as far as branch to T1 (ultimately SA2 and beyond)
+start_name1 = "STSUB.1980.TL"
+stop_name1 = "ENSUB.2025.TL"
+
+[sections.TL5] # Goes to SA1
+# Starts at end of TL3TL4 and ultimately heads to SA1 and beyond
+start_name1 = "STSUB.2025.TL"
+stop_name1 = "ENSEC.2058.TL"
+
+
+# TLD BRANCH
+
 [sections.TLD]
+# Starts at end of TL1TL2 and goes to dump
 start_name1 = "STSEC.1980.TLD"
 stop_name1 = "ENSEC.2130.TLD"
 
-# [sections.TL3TL4]
-# start_name1 = "STSUB.1980.TL"
-# stop_name1 = "ENSUB.2025.TL"
+# SASE2 BRANCH
+
+[sections.T1]
+start_name1 = "STSEC.2025.T1"
+stop_name1 = "ENSEC.2197.T1"
+
+[sections.SA2]
+start_name1 = "STSEC.2197.SA2"
+stop_name1 = "ENSEC.2423.SA2"
+
+[sections.T3]
+start_name1 = "STSEC.2423.T3"
+stop_name1 = "ENSEC.2743.UN1"
+
+[sections.T5]
+start_name1 = "STSEC.2743.T5"
+stop_name1 = "ENSEC.3039.UN2"
+
+[sections.T5D]
+start_name1 = "STSEC.3039.T5D"
+stop_name1 = "ENSEC.3189.T5D"
+
+# [sections.T2SA1]
+# start_name
+
+
+# 17:all_sections = [A1, AH1, LH, DL,  BC0, L1, BC1, L2, BC2, L3, CL1, CL2, CL3, STN10, SASE1, T4]#, SASE3, T4D]
+
+
+# [sections.sase1]
+# start_name1 =
 
 # [sections.sa1]
 # start_name1 = "STSUB.2025.TL"
@@ -81,6 +152,10 @@ stop_name1 = "ENSEC.2130.TLD"
 # [sections.t4d]
 # start_name1 = "STSEC.2955.T4D"
 # stop_name1 = "ENSEC.3106.T4D"
+
+# [sections.t5d]
+# start_name1 = "STSEC.2025.T1"
+# stop_name1 = "ENSEC.3189.T5D"
 
 [extras.design]
 [extras.design."TDSA.52.I1"]

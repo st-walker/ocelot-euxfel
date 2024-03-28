@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 
 from oxfel.predefined import cat_to_i1d
-from oxfel.optics import get_match_point_optics, get_match_point
+from oxfel.optics import get_match_point_optics, get_match_point, INJECTOR_MATCHING_QUAD_NAMES
 
 
 
@@ -15,6 +15,10 @@ def i1d_real():
 def i1d_design():
     return cat_to_i1d(model_type="design")
 
+@pytest.fixture
+def t4d_design():
+    return cat_to_t4d(model_type="design")
+
 
 def test_i1d_match_optics_design(i1d_real):
     """Build the real model, track, and check the optics at the match point are correct."""
@@ -23,7 +27,7 @@ def test_i1d_match_optics_design(i1d_real):
     # Should be perfectly matched.
     assert np.isclose(df.loc["MATCH.52.I1"]["bmag_x"].item(), 1.0)
     assert np.isclose(df.loc["MATCH.52.I1"]["bmag_y"].item(), 1.0)
-    
+
 
 def test_i1d_match_optics_real(i1d_design):
     """Build the design model, track, and check the optics at the match point are correct."""
@@ -32,4 +36,9 @@ def test_i1d_match_optics_real(i1d_design):
     # Should be perfectly matched.
     assert np.isclose(df.loc["MATCH.52.I1"]["bmag_x"].item(), 1.0)
     assert np.isclose(df.loc["MATCH.52.I1"]["bmag_y"].item(), 1.0)
+
+
+def test_t4d_design_optics(tds_design):
+    pass
     
+

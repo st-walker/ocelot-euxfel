@@ -1,5 +1,5 @@
 from ocelot.cpbd.io import load_particle_array
-from importlib_resources import files
+from importlib.resources import files
 
 from .converter import injector_to_astra
 

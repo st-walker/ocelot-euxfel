@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from typing import Optional, Union, Type, Iterable, TypeVar, Callable, Any
+from typing import Type, Iterable, TypeVar, Callable, Any
 from pathlib import Path
 import logging
 from copy import deepcopy
@@ -15,6 +15,8 @@ import numbers
 import pickle
 from collections import defaultdict
 from .processes import PhysicsList
+from copy import deepcopy
+
 
 import numpy as np
 from ocelot.cpbd.csr import CSR
@@ -44,7 +46,7 @@ LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.INFO)
 
 
-TrackingStartPoint = Union[ElementAccessType, float]
+TrackingStartPoint = ElementAccessType | float
 ElementSequenceT = list[ElementT]
 
 
@@ -52,55 +54,30 @@ ElementSequenceT = list[ElementT]
 class TrackingResult:
     parray1: ParticleArray
     sequence: MachineSequence
-    twiss: Optional[pd.DataFrame] = None
-    dumps: dict[str, ParticleArray] = None
+    twiss: pd.DataFrame | None = None
+    dumps: dict[str, ParticleArray] | None = None
 
 
-
-
-# class FELSection:
-#     def __init__(self, sequence: MachineSequence):
-#         self.sequence = MachineSequence(sequence)
-
-#     @property
-#     def start(self):
-#         return self.sequence[0].id
-
-#     @property
-#     def stop(self):
-#         return self.sequence[-1].id
-
-#     def get_sequence(self, idstart=None, idstop=None, felconfig=None):
-#         if felconfig is not None:
-#             return felconfig.new_sequence(self.sequence)
-#         else:
-#             return deepcopy(self.sequence)
-
-#     @classmethod
-#     @property
-#     def name(cls):
-#         return cls.__name__
-
-
+class SimulationConfig:
+    pass
 
 
 class Linac:
+    SIMCONF_CLASS = SimulationConfig
     def __init__(
         self,
-        sequence,
+        sequence: MachineSequence | list,
         twiss0: Twiss,
         outdir: os.PathLike = "./",
         felconfig=None,
         physics_list=None
     ):
-        self.sequence = sequence
+        self.sequence = MachineSequence(sequence)
         self.twiss0 = twiss0
         self.felconfig = felconfig if felconfig else None
         self.physics_list = physics_list if physics_list else PhysicsList([])
 
-        # self._check_sections_for_duplicate_start_stops()
-
-    def _net_felconfig(self, felconfig2=None):
+    def _net_felconfig(self, felconfig2=None) -> SimulationConfig:
         try:
             conf_path = Path(felconfig2)
         except TypeError:
@@ -111,23 +88,48 @@ class Linac:
 
         felconfig = self.felconfig
         if felconfig is None:
-            felconfig = EuXFELSimConfig()
+            felconfig = self.SIMCONF_CLASS()
 
         if felconfig2 is None:
-            felconfig2 = EuXFELSimConfig()
+            felconfig2 = self.SIMCONF_CLASS()
 
         return felconfig | felconfig2
 
+    # def get_start_element_name(self, start: Optional[str] = None, twiss0: Optional[Twiss] = None) -> str:
+    #     # If both have been provided then favour and explicit start parameter
+    #     try:
+    #         twiss0id = twiss0.id
+    #     except AttributeError:
+    #         twiss0id = ""
+            
+    #     if start:
+    #         idstart = start
+    #     elif twiss0id:
+    #         idstart = twiss0id
+    #     elif self.twiss0.id:
+    #         idstart = self.twiss0.id
+    #     else:
+    #         idstart = self.sequence[0].id
+    #     LOG.debug(f"Returning {idstart=} from {start=}, {twiss0=} and {self.twiss0.id=}")
+    #     return idstart
+
     def _calculate_twiss_between_two_points(
-        self, twiss0: Twiss, start=None, stop=None, felconfig=None
-    ):
+            self, twiss0: Twiss, start: ElementAccessType | None = None,
+            stop: ElementAccessType | None = None,
+            felconfig: SimulationConfig | None = None
+    ) -> tuple[pd.DataFrame, MagneticLattice]:
         # self._check_twiss_position_matches(twiss0, start)
         sequence = self.get_sequence(start=start, stop=stop, felconfig=felconfig)
         mlat = MagneticLattice(sequence)
+
+        # mangle initial name a bit for clarity.
+        twiss0 = deepcopy(twiss0)
+        twiss0.id = "$fel_twiss_start"
+
         full_twiss = oce_calc_twiss(mlat, tws0=twiss0, return_df=True)
         return full_twiss, mlat
 
-    def design_twiss(self, stop: ElementAccessType = None):
+    def design_twiss(self, stop: ElementAccessType = None) -> tuple[Twiss, MagneticLattice]:
         twiss, mlat = self._calculate_twiss_between_two_points(
             twiss0=self.twiss0, stop=stop
         )
@@ -135,9 +137,22 @@ class Linac:
 
     def machine_twiss(
         self,
-        stop: ElementAccessType = None,
-        felconfig: Optional[EuXFELSimConfig] = None,
+        stop: ElementAccessType | None = None,
+        felconfig: SimulationConfig | None = None,
     ) -> tuple[pd.DataFrame, MagneticLattice]:
+        """Calculates the Twiss parameters and magnetic lattice
+        configuration to the stop point, by default the end, using the
+        member twiss0 instance as initial Twiss parameters.
+        
+        Parameters:
+        - stop (ElementAccessType, optional): The stopping point in the machine for calculation.
+        - felconfig (SimulationConfig, optional): Configuration for Free Electron Laser simulation.
+        
+        Returns:
+        - tuple[pd.DataFrame, MagneticLattice]: A tuple containing a DataFrame of calculated Twiss parameters
+        and the magnetic lattice configuration.
+
+        """
         felconfig = self._net_felconfig(felconfig)
         twiss, mlat = self._calculate_twiss_between_two_points(
             twiss0=self.twiss0, stop=stop, felconfig=felconfig
@@ -145,7 +160,7 @@ class Linac:
         return twiss, mlat
 
     def calculate_twiss(
-        self, twiss0: Twiss0, start: ElementAccessType, stop: Optional[ElementAccessType] = None, felconfig: Optional[EuXFELSimConfig] = None
+        self, twiss0: Twiss, start: ElementAccessType, stop: ElementAccessType | None = None, felconfig: SimulationConfig | None = None
     ) -> tuple[pd.DataFrame, MagneticLattice]:
         """
         Calculates the Twiss parameters for the Linac instance over a specified section.
@@ -162,7 +177,7 @@ class Linac:
         - stop (Optional[str]): The name or identifier of the stopping element in the magnetic lattice at which the
                                 calculation ends. If `None`, the calculation proceeds to the end of the lattice or until
                                 another stopping condition is met.
-        - felconfig (Optional[EuXFELSimConfig]): An optional configuration for the Linac section.
+        - felconfig (Optional[SimulationConfig]): An optional configuration for the Linac section.
 
         Returns:
         A tuple containing two elements:
@@ -174,6 +189,7 @@ class Linac:
           properties, over the specified range.  Useful for plotting.
 
         """
+        # start = self.get_start_element_name(twiss0=twiss0, start=start)
         felconfig_net = self._net_felconfig(felconfig)
         LOG.debug(f'Calculating linear optics between "{start}" and "{stop}"')
         # Final stretch, between the matching point and the provided "stop"
@@ -186,12 +202,12 @@ class Linac:
 
     def track(
         self,
-        parray0,
-        start: TrackingStartPoint = None,
-        stop: ElementAccessType = None,
-        felconfig: Optional[EuXFELSimConfig] = None,
-        dumps=None,
-        physics=True,
+            parray0: ParticleArray,
+            start: TrackingStartPoint | None = None,
+            stop: ElementAccessType = None,
+            felconfig: SimulationConfig | None = None,
+        dumps: Iterable[str] | None = None,
+        physics: bool = True,
     ) -> TrackingResult:
         return self._do_tracking(
             parray0,
@@ -206,12 +222,12 @@ class Linac:
     def track_optics(
         self,
         parray0: ParticleArray,
-        start: TrackingStartPoint = None,
-        stop: ElementAccessType = None,
-        felconfig: Optional[EuXFELSimConfig] = None,
-        dumps=None,
-        physics=False,
-        opticscls=None,
+        start: TrackingStartPoint | None = None,
+        stop: ElementAccessType | None = None,
+            felconfig: SimulationConfig | None = None,
+        dumps: Iterable[str] | None = None,
+        physics: bool = False,
+        opticscls: type | str | None = None,
         outdir: os.PathLike = None,
     ) -> TrackingResult:
         tracking_result = self._do_tracking(
@@ -232,12 +248,12 @@ class Linac:
         parray0: ParticleArray,
         *,
         calculate_optics: bool,
-        start: ElementAccessType = None,
+        start: TrackingStartPoint = None,
         stop: ElementAccessType = None,
-        dumps=None,
-        physics=False,
-        opticscls=None,
-        felconfig: Optional[EuXFELSimConfig] = None,
+        dumps: Iterable[str] | None = None,
+        physics: bool = False,
+        opticscls: type | str | None = None,
+        felconfig: SimulationConfig | None = None,
         **track_kwargs,
     ) -> TrackingResult:
         if isinstance(start, numbers.Number):
@@ -249,22 +265,20 @@ class Linac:
         navi = self.to_navigator(
             start=start, stop=stop, felconfig=felconfig, physics=physics
         )
-
+        
         if calculate_optics:
-            _add_markers_to_navi_for_optics(navi, opticscls)
-        if not opticscls:
-            opticscls = TwissCalculator
+            opticscls = _add_markers_to_navi_for_optics(navi, opticscls)
 
         if dumps is None:
             dumps = []
-        copy_procs = _add_copy_beams(navi, dumps)
 
+        copy_procs = _add_copy_beams(navi, dumps)
         # It is important to do this AFTER manipulating the navigator
         # (with copybeam and twiss calc instances being added) because
         # otherwise we end up with everything being in a strange and
         # bad state.  in principle could resolve it here but i don't know now.
         navi.jump_to(zstart)
-
+        
         LOG.debug(f'Starting tracking between "{start}" and "{stop}"')
         _, parray1 = track.track(
             navi.lat,
@@ -275,23 +289,26 @@ class Linac:
             overwrite_progress=False,
         )
 
+        twiss = pd.DataFrame()
         if calculate_optics:
-            twiss_procs = [
-                p for p in navi.inactive_processes if isinstance(p, opticscls)
-            ]
-            twiss = _extract_twiss_paramters_from_twiss_processes(twiss_procs)
-        else:
-            twiss = pd.DataFrame()
+            twiss = _extract_twiss_parameters_from_twiss_processes(navi.inactive_processes)
 
-        dumps = {copy.name: copy.parray for copy in copy_procs}
+        
+        parrays_at_dumps = {}
+        if dumps:
+            for process in navi.inactive_processes:
+                try:
+                    parrays_at_dumps[process.name] = process.copied_parray
+                except AttributeError:
+                    pass
 
-        return TrackingResult(parray1, navi.lat.sequence, twiss, dumps)
+        return TrackingResult(parray1, navi.lat.sequence, twiss, parrays_at_dumps)
 
     def to_navigator(
         self,
-        start: ElementAccessType = None,
-        stop: ElementAccessType = None,
-        felconfig: Optional[EuXFELSimConfig] = None,
+        start: ElementAccessType | None = None,
+        stop: ElementAccessType | None = None,
+        felconfig: SimulationConfig | None = None,
         physics: bool = True,
     ) -> Navigator:
         felconfig = self._net_felconfig(felconfig)
@@ -317,7 +334,7 @@ class Linac:
             if start not in all_names:
                 raise ElementAccessError(f"Element named {start} not found")
             if stop not in all_names:
-                from IPython import embed; embed()
+                # from IPython import embed; embed()
                 raise ElementAccessError(f"Element named {stop} not found")
 
             # If process stops before sequence starts, then skip.
@@ -372,7 +389,7 @@ class Linac:
         process: PhysProc,
         start_name: ElementAccessType,
         stop_name: ElementAccessType,
-        felconfig: EuXFELSimConfig,
+        felconfig: SimulationConfig,
     ) -> None:
         machine_twiss, _ = self.machine_twiss(felconfig=felconfig)
         start_energy = machine_twiss.query(f"id == '{start_name}'").iloc[0].E
@@ -387,33 +404,12 @@ class Linac:
         self,
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
-        felconfig: EuXFELSimConfig = None,
+        felconfig: SimulationConfig = None,
     ) -> MachineSequence:
         LOG.debug(f"Building sequence, {start=}, {stop=}, {felconfig=}")
         result = self.sequence.closed_interval(start, stop)
         net_felconfig = self._net_felconfig(felconfig2=felconfig)
         return MachineSequence(net_felconfig.new_sequence(result))
-
-    def length(self) -> float:
-        x = 0
-        from IPython import embed; embed()
-        for section in self.sections:
-            x += section.sequence.length()
-        return x
-
-    @property
-    def section_names(self) -> list[str]:
-        return [sec.name for sec in self.sections]
-
-    def __getitem__(self, key: str) -> FELSection:
-        return dict(zip(self.section_names, self.sections))[key]
-
-    def get_element(self, name: str) -> ElementT:
-        for section in self.sections:
-            for element in section.sequence:
-                if element.id == name:
-                    return element
-        raise KeyError(f"{name} not found")
 
     def get_element_end_s(self, name: str) -> float:
         s = 0
@@ -440,10 +436,9 @@ class Linac:
         quad_names: list[str],
         twiss_goal: Twiss,
         maxiter=1,
-        felconfig: Optional[EuXFELSimConfig] = None,
-        match: Union[Callable[[ParticleArray], Twiss], str] = "projected",
+        felconfig: SimulationConfig | None = None,
+        match: Callable[[ParticleArray], Twiss] | str = "projected",
     ):
-        from IPython import embed; embed()
         felconfig = self._net_felconfig(felconfig)
 
         navi = self.to_navigator(start=start, stop=stop, felconfig=felconfig)
@@ -463,11 +458,11 @@ class Linac:
         constraints: dict[str : dict[str, float]],
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
-        felconfig: Optional[EuXFELSimConfig] = None,
+        felconfig: SimulationConfig | None = None,
         physics=True,
         match="projected",
         **match_beam_kwargs,
-    ) -> EuXFELSimConfig:
+    ) -> SimulationConfig:
         # Make navigator from given start, stop and felconfig
         navi = self.to_navigator(
             start=start, stop=stop, felconfig=felconfig, physics=physics
@@ -531,10 +526,10 @@ class Linac:
         constraints: dict[str : dict[str, float]],
         start: ElementAccessType = None,
         stop: ElementAccessType = None,
-        felconfig: Optional[EuXFELSimConfig] = None,
+        felconfig: SimulationConfig | None = None,
         verbose: bool = True,
         **match_kwargs,
-    ) -> EuXFELSimConfig:
+    ) -> SimulationConfig:
         """
         Match the optics for this Linac instance starting with the
             input optics twiss0 at position `start` and ending at `stop`.
@@ -547,12 +542,12 @@ class Linac:
         - constraints (dict[str: dict[str, float]]): The constraints, of the same form as required by `ocelot.match.match`.
         - start (ElementAccessType, optional): Name/index of first element to be tracked from.  If None, start from beginning of the sequence.
         - stop (ElementAccessType, optional): Name/index of last element to be tracked to.  If None, stop at end of the sequence.
-        - felconfig (Optional[EuXFELSimConfig], optional): Optional FELConfig instance to be applied to the sequence before matching.
+        - felconfig (Optional[SimulationConfig], optional): Optional FELConfig instance to be applied to the sequence before matching.
         - verbose (bool, optional): Description of verbose. If True, provides detailed logging. Default is True.
         - match_kwargs (dict): Additional keyword arguments for matching.
 
         Returns:
-        - EuXFELSimConfig: The EuXFELSimConfig with matched Quadrupoles.
+        - SimulationConfig: The SimulationConfig with matched Quadrupoles.
 
         """
 
@@ -638,8 +633,8 @@ class CavityController(Controller):
     def __init__(
         self,
         regex: str,
-        phi: Optional[float] = None,
-        v: Optional[float] = None,
+        phi: float | None = None,
+        v: float | None = None,
         active: bool = None,
         coupler_kick=None,
     ):
@@ -854,115 +849,10 @@ class ChicaneController(Controller):
         return self
 
 
-DEFAULT_CONTROLS = {
-    "tdsi1": (CavityController, r"TDSA\.52\.I1"),
-    "tds2": (CavityController, r"TDSB\.(428|430)\.B2"),
-    "a1": (CavityController, r"C\.A1\.1\.[0-8].I1"),
-    "ah1": (CavityController, r"C3\.AH1\.1\.[0-8].I1"),
-    "a2": (CavityController, r"C\.A2\.[0-4]\.[0-8].L1"),
-    "a3": (CavityController, r"C\.A[3-5]\.[0-4]\.[0-8].L2"),
-    "lh": (ChicaneController, "BL\.(48I|48II|50I|50II)\.I1"),
-    "bc0": (ChicaneController, r"BB\.(96|98|100|101)\.I1"),
-    "bc1": (ChicaneController, r"BB\.(182|191|193|202)\.B1"),
-    "bc2": (ChicaneController, r"BB\.(393|402|404|413)\.B2"),
-}
 
 
-def _make_default_controls():
-    global DEFAULT_CONTROLS
-    return {name: cls(regex) for (name, (cls, regex)) in DEFAULT_CONTROLS.items()}
 
 
-class SimulationConfig:
-    pass
-
-
-class EuXFELSimConfig(SimulationConfig):
-    def __init__(
-        self,
-        metadata: Optional[dict] = None,
-        controls: Optional[dict[str, Any]] = None,
-        components: Optional[dict[str, dict[str, Any]]] = None,
-        physics: Optional[PhysicsConfig] = None,
-    ):
-        self.metadata = metadata if metadata else {}
-        self.components = components if components else {}
-        self.controls = controls if controls else _make_default_controls()
-        self.physics = physics if physics else PhysicsConfig()
-
-    def new_sequence(self, sequence):
-        new_sequence = self.apply_controls_to_sequence(sequence)
-        new_sequence = self.apply_magnet_conf_to_sequence(new_sequence)
-        return new_sequence
-
-    def apply_controls_to_sequence(
-        self, sequence: Iterable[ElementT]
-    ) -> MachineSequence:
-        new_sequence = deepcopy(sequence)
-
-        for element in new_sequence:
-            for control in self.controls.values():
-                if control.should_modify() and control.match(element):
-                    control.modify_element(element)
-
-        for control in self.controls.values():
-            control.modify_sequence(new_sequence)
-        return new_sequence
-
-    def apply_magnet_conf_to_sequence(
-        self, sequence: Iterable[ElementT]
-    ) -> MachineSequence:
-        sequence = deepcopy(sequence)
-        magnet_conf = self.components
-        for element in sequence:
-            name = element.id
-            if name in magnet_conf:
-                for key, value in magnet_conf[name].items():
-                    previous = getattr(element, key)
-                    if np.isclose(previous, value):
-                        continue
-                    setattr(element, key, value)
-                    LOG.debug(f"Set: {name}->{key} to {value}")
-
-        return MachineSequence(sequence)
-
-    def __str__(self) -> str:
-        return textwrap.dedent(
-            f"""\
-        FELSimulationConfig:
-        - TDS1: phi = {self.controller.tds1.phi}, v = {self.controller.tds1.v}
-        - A1 Cavities: phi = {self.controller.a1.phi}, v = {self.controller.a1.v}
-        - AH1 Cavities: phi = {self.controller.ah1.phi}, v = {self.controller.ah1.v}"""
-        )
-
-    def __ior__(self, other)\
-        -> EuXFELSimConfig:
-        self.metadata |= other.metadata
-        self.components |= other.components
-        for name, other_control in other.controls.items():
-            try:
-                self.controls[name] |= other_control
-            except KeyError:
-                self.controls[name] = deepcopy(other_control)
-
-        return self
-
-    def __or__(self, other):
-        result = deepcopy(self)
-        result |= other
-
-        return result
-
-    def to_pickle(self, fpath):
-        with open(fpath, "wb") as f:
-            pickle.dump(self, f)
-            LOG.debug(f"Written pickled config to {fpath}")
-
-    def update_components(self, names, values, attribute):
-        self.components.update({name: {attribute: val} for name, val in zip(names, values)})
-
-
-EuXFELConfig = EuXFELSimConfig
 
 class NoTwiss(PhysProc):
     MATCH = None
@@ -1000,12 +890,12 @@ class TwissCalculator(PhysProc):
 class SliceTwissCalculator(PhysProc):
     """Calculate dispersion-free Twiss parameters"""
 
-    def __init__(self, name):
+    def __init__(self, name: str):
         super().__init__()
         self.name = name
         self.twiss = None
 
-    def apply(self, parray, dz):
+    def apply(self, parray: ParticleArray, dz: float):
         slice_params = global_slice_analysis(
             parray,
             nparts_in_slice=5000,
@@ -1034,12 +924,12 @@ class PeakCurrentTwissCalculator(SliceTwissCalculator):
 
 
 class FullTwissCalculator(PhysProc):
-    def __init__(self, name):
+    def __init__(self, name: str):
         super().__init__()
         self.name = name
         self.twiss = None
 
-    def apply(self, parray, dz):
+    def apply(self, parray: ParticleArray, dz: float) -> None:
         slice_params = global_slice_analysis(
             parray,
             nparts_in_slice=5000,
@@ -1058,14 +948,35 @@ class FullTwissCalculator(PhysProc):
         self.twiss.E = float(parray.E)
 
 
-def _twiss_central_slice(parray, match_slice="Imax", **kwargs):
+def _twiss_central_slice(parray: ParticleArray, match_slice: str = "Imax", **kwargs) -> Twiss:
     return twiss_parray_slice(parray, slice=match_slice, **kwargs)
 
 
+def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: type | str | None = None) -> type:
+    """Add markers to the navigator with attached physics processes
+    for the type of optics we are interested in calculating
 
-def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):
+    """
+
+    if not opticscls:
+        opticscls = TwissCalculator
+        
+    try:
+        opticsname = opticscls.lower()
+    except AttributeError:
+        pass
+    else:
+        if opticsname == "projected":
+            opticscls = TwissCalculator            
+        elif opticsname == "emax":
+            opticscls = PeakEnergyTwissCalculator
+        elif opticsname == "imax":
+            opticscls = PeakCurrentTwissCalculator
+        else:
+            raise ValueError(f"Unknown named class provided: {opticscls}")
+
+
     # Put markers everywhere.
-
     new_markers = insert_markers_by_predicate(
         navi.lat.sequence, lambda ele: True, before=False, after_suffix=""
     )
@@ -1092,10 +1003,10 @@ def _add_markers_to_navi_for_optics(navi: Navigator, opticscls: Type = None):
         elem1 = proc.end_elem
         proc.indx1 = element_names.index(elem1.id)
 
-    return twiss_processes
+    return opticscls
 
 
-def _add_copy_beams(navi, element_names):
+def _add_copy_beams(navi: Navigator, element_names: list[str]) -> list[CopyBeam]:
     rprocs = []
     for element_name in element_names:
         # Make CopyBeam instance for this element name
@@ -1113,15 +1024,20 @@ def _add_copy_beams(navi, element_names):
     return rprocs
 
 
-def _extract_twiss_paramters_from_twiss_processes(twiss_processes):
+def _extract_twiss_parameters_from_twiss_processes(processes: list[PhysProc]) -> pd.DataFrame:
     # We filter Nones just because at the very end of the lattice
     # some markers are not tracked through due the tolerance check
     # in track.track (markers have 0. length).  Sort also by s.
     twiss_instances = []
-    for proc in twiss_processes:
-        twiss = proc.twiss
+    for proc in processes:
+        try:
+            twiss = proc.twiss
+        except AttributeError:
+            continue
+
         if twiss is None:
             continue
+
         twiss.id = proc.name
         twiss_instances.append(twiss)
     twiss_instances.sort(key=lambda tws: tws.s)
@@ -1131,7 +1047,7 @@ def _extract_twiss_paramters_from_twiss_processes(twiss_processes):
     return twissdf
 
 
-def _get_element_instances_from_mlat(mlat, names):
+def _get_element_instances_from_mlat(mlat: MagneticLattice, names: list[str]) -> list[ElementT]:
     def f(ele):
         return ele.id in names
 
@@ -1163,26 +1079,7 @@ def _coerce_to_ocelot_twiss(twisslike):
     return Twiss.from_series(twisslike)
 
 
-# class MatchType(Enum):
-#     PROJECTED = auto()
-
-
-# @dataclass
-# class Match:
-#     marker_name: str
-#     match_type:
-
-# def _parse_track_kwargs(track_kwargs):
-#     rdict = copy(track_kwargs)
-#     if track_kwargs["navi"]:
-#         warnings.warn("Explicitly providing a Navigator is not supported.  Ignoring.")
-#         del rdict[track_kwargs]
-#     elif track_kwargs[""]
-
-#     pass
-
-
-def _string_to_twiss_match_function(match_string):
+def _string_to_twiss_match_function(match_string: str):
     if match_string == "projected":
         twiss_function = get_envelope
     elif match_string.lower() == "emax":

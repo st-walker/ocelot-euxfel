@@ -1,7 +1,13 @@
+from typing import Optional
+import os
+
+import numpy as np
+import numpy.typing as npt
 from ocelot.cpbd.beam import Twiss
 
-from .longlist import make_default_longlist
-import numpy as np
+import pandas as pd
+
+from .longlist import get_default_component_list, XFELComponentList
 
 INJECTOR_MATCHING_QUAD_NAMES: list[str] = [
     "Q.37.I1",
@@ -45,17 +51,37 @@ _OCELOT_OTHER_NAMES = ["id", "s"]
 _OCELOT_TWISS_NAMES = _OCELOT_OTHER_NAMES + _OCELOT_OPTICS_NAMES
 
 
-def get_name2_fixed_match_points(additional_names=None):
+
+def get_name2_fixed_match_points(additional_names: Optional[list[str]] = None):
     if additional_names is None:
         additional_names = []
-    ll = make_default_longlist()
+    ll = get_default_component_list()
     return [
         ll.name1_to_name2(name1).item()
         for name1 in FIXED_MATCH_POINTS + additional_names
     ]
 
 
-def _normalise_twiss_df(df):
+def get_match_point_constraints(longlist: Optional[XFELComponentList] = None) -> dict[str, dict[str, float]]:
+    if longlist is None:
+        longlist = get_default_component_list()
+    points = ALL_INTERESTING_MATCH_POINTS
+
+    tups = [x for x in longlist.df.itertuples() if x.NAME1 in points]
+
+    constraints = {}
+    for tup in tups:
+        odict = {"alpha_x": tup.ALFX,
+                 "beta_x": tup.BETX,
+                 "alpha_y": tup.ALFY,
+                 "beta_y": tup.BETY}
+        
+        constraints[tup.NAME1] = odict
+
+    return constraints
+
+
+def _normalise_twiss_df(df: pd.DataFrame) -> pd.DataFrame:
     # Change columns to ocelot column names
     # Change NAME2 to NAME1s.
     df = df.rename(
@@ -75,7 +101,7 @@ def _normalise_twiss_df(df):
     return df
 
 
-def get_match_point_optics(twiss_df, additional_names=None):
+def get_match_point_optics(twiss_df: pd.DataFrame, additional_names: Optional[list[str]] = None) -> pd.DataFrame:
     twiss_df = _normalise_twiss_df(twiss_df)
 
     if additional_names is None:
@@ -83,10 +109,16 @@ def get_match_point_optics(twiss_df, additional_names=None):
 
     point_names = FIXED_MATCH_POINTS + additional_names
     names = [name for name in point_names if name in np.array(twiss_df["id"])]
-    return twiss_df.set_index("id").loc[names].reset_index()[_OCELOT_TWISS_NAMES]
+
+    try:
+        return twiss_df.set_index("id").loc[names].reset_index()[_OCELOT_TWISS_NAMES]
+    except TypeError:
+        raise ValueError("Unable to extract, possibly duplicate names in twiss_df id column")
+    
+    
 
 def default_match_point_optics():
-    df = make_default_longlist().df
+    df = get_default_component_list().longlist
     df = _normalise_twiss_df(df)
 
     match_points = df.set_index("id").loc[FIXED_MATCH_POINTS].reset_index()
@@ -94,14 +126,14 @@ def default_match_point_optics():
     return twiss
 
 
-def get_default_match_point(match_name):
+def get_default_match_point(match_name: str) -> Twiss:
     df = default_match_point_optics()
     twiss_series = df[df.id == match_name]
     
     return Twiss.from_series(twiss_series)
-    # TODO: Twiss.from_series(match_name)
 
-def print_match_point_analysis(twiss_or_twiss_df, additional_names=None):
+def print_match_point_analysis(twiss_or_twiss_df: pd.DataFrame,
+                               additional_names: Optional[list[str]] = None) -> None:
     try:
         print(get_match_point(twiss_or_twiss_df, additional_names=additional_names))
         return
@@ -112,7 +144,7 @@ def print_match_point_analysis(twiss_or_twiss_df, additional_names=None):
 
     print(get_match_point(twiss_or_twiss_df.to_series().to_frame().T, additional_names=additional_names))
 
-def get_match_point(twiss_df, additional_names=None):
+def get_match_point(twiss_df: pd.DataFrame, additional_names: Optional[list[str]] = None) -> pd.DataFrame:
     twiss_match = get_match_point_optics(twiss_df, additional_names=additional_names)
     twiss_match_reference = default_match_point_optics()
 
@@ -147,13 +179,13 @@ def get_match_point(twiss_df, additional_names=None):
     return twiss_match
 
 
-def read_mad8(fname):
+def read_mad8(fname: os.PathLike) -> pd.DataFrame:
     import pand8
 
     df8 = pand8.read(fname)
     df8 = df8.rename(mapper={"NAME": "NAME2"}, axis=1)
 
-    ll = make_default_longlist()
+    ll = get_default_component_list()
 
     di = dict(zip(ll.df.NAME2, ll.df.NAME1))
 
@@ -164,7 +196,8 @@ def read_mad8(fname):
     return _normalise_twiss_df(df8)
 
 
-def bmag(beta, alpha, beta_design, alpha_design):
+def bmag(beta: npt.ArrayLike, alpha: npt.ArrayLike,
+         beta_design: npt.ArrayLike, alpha_design: npt.ArrayLike) -> np.ndarray:
     bmag = 0.5 * (
         (beta / beta_design + beta_design / beta)
         + (beta * beta_design * ((alpha_design / beta_design) - (alpha / beta)) ** 2)

@@ -3,28 +3,34 @@ from pathlib import Path
 import pickle
 from enum import Enum, auto
 from typing import Union
-from importlib_resources import files
+from importlib.resources import files
 
 import pandas as pd
 from ocelot import Twiss
 
-from oxfel.accelerator.lattice import i1, i1d
-from oxfel.fel_track import Linac, EuXFELSimConfig, MachineSequence
+from oxfel.accelerator.lattice import (i1, i1d, l1, b1d, l2, b2d, l3,
+                                       cl, tld, tl1tl2, tl3tl4, tl5,
+                                       t1, sa2, t3, t5, t5d)
+from oxfel.fel_track import MachineSequence
 from oxfel.conversion import TRACKING_CONF_NAME, REAL_CONF_NAME, get_bunchsizerc_path
 from oxfel.processes import load_default_physics_lists, PhysicsList
+from .xfelt import EuXFELSimConfig, EuXFEL
 
 # I1D_SECTIONS = [G1, A1, AH1, LH, I1D]
 # B1D_SECTIONS = [G1, A1, AH1, LH, DL, BC0, L1, BC1, B1D]
 # B2D_SECTIONS = [G1, A1, AH1, LH, DL, BC0, L1, BC1, L2, BC2, B2D]
-# TLD_SECTIONS = [G1, A1, AH1, LH, DL, BC0, L1, BC1, L2, BC2, L3, CL1, CL2, CL3, TLD]
+
 # T4D_SECTIONS = []
 # T5D_SECTIONS = []
 
-TWISS0 = i1.tws0
+_TWISS0 = i1.tws0
 
 I1D_SUBSEQUENCES = ["i1", "i1d"]
-B2D_SUBSEQUENCES = []
-
+B1D_SUBSEQUENCES = ["i1", "l1", "b1d"]
+B2D_SUBSEQUENCES = ["i1", "l1",  "l2", "b2d"]
+TLD_SUBSEQUENCES = ["i1", "l1", "l2", "l3", "cl", "tl1tl2", "tld"]
+# T4D_SUBSEQUENCES = ["i1", "l1", "l2", "l3", "cl"]
+T5D_SUBSEQUENCES = ["i1", "l1", "l2", "l3", "cl", "tl1tl2", "tl3tl4", "t1", "sa2", "t3", "t5", "t5d"]
 
 def _init_module_level_cells(module_names):
     result = []
@@ -61,10 +67,10 @@ class ModelBuilder:
 
     def __call__(
         self, *, model_type: Union[str, ModelType] = ModelType.DESIGN
-    ) -> Linac:
+    ) -> EuXFEL:
         felconfig = self._get_fel_config(model_type)
         physics_list = self._get_physics_list()
-        fel = Linac(
+        fel = EuXFEL(
             _init_module_level_cells(self.subsequence_names), twiss0=self.twiss0, felconfig=felconfig,
             physics_list=physics_list
         )
@@ -101,11 +107,11 @@ class ModelBuilder:
         return result
 
 
-cat_to_i1d = ModelBuilder(TWISS0, I1D_SUBSEQUENCES, "i1d")
-# cat_to_b1d = ModelBuilder(TWISS0, B1D_SECTIONS, "b1d")
-cat_to_b2d = ModelBuilder(TWISS0, B2D_SUBSEQUENCES, "b2d")
-# cat_to_tld = ModelBuilder(TWISS0, TLD_SECTIONS, "tld")
-# cat_to_t4d = ModelBuilder(TWISS0, T4D_SECTIONS, "t4d")
+cat_to_i1d = ModelBuilder(_TWISS0, I1D_SUBSEQUENCES, "i1d")
+cat_to_b1d = ModelBuilder(_TWISS0, B1D_SUBSEQUENCES, "b1d")
+cat_to_b2d = ModelBuilder(_TWISS0, B2D_SUBSEQUENCES, "b2d")
+cat_to_tld = ModelBuilder(_TWISS0, TLD_SUBSEQUENCES, "tld")
+cat_to_t5d = ModelBuilder(_TWISS0, T5D_SUBSEQUENCES, "t5d")
 
 
 

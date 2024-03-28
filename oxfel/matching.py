@@ -12,10 +12,9 @@ from ocelot.cpbd.magnetic_lattice import MagneticLattice
 from ocelot.cpbd.match import match
 
 
+from .sequence import ElementT
 from .tracking import start_sim_to_match_37
 from .optics import MATCH_37, MATCH_52, default_match_point_optics, INJECTOR_MATCHING_QUAD_NAMES
-from .fel_track import EuXFELSimConfig
-
 
 LOG = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ class BacktrackingLinearMatcher:
                                              "alpha_x": self.goal_twiss.alpha_x,
                                              "alpha_y": self.goal_twiss.alpha_y}}
 
-    def l2loss(self):
+    def l2loss(self) -> float:
         assert self.parray1 is not None
         twiss = self.twiss_function(self.parray1)
         gt = self.goal_twiss
@@ -53,7 +52,7 @@ class BacktrackingLinearMatcher:
                        + (twiss.beta_y - gt.beta_y)**2
                        + (twiss.alpha_y - gt.alpha_y)**2)
 
-    def bmags(self):
+    def bmags(self) -> tuple[float, float]:
         assert self.parray1 is not None
         twiss = self.twiss_function(self.parray1)
         def calc_bmag(alpha, beta, alpha_design, beta_design):
@@ -70,7 +69,7 @@ class BacktrackingLinearMatcher:
 
         return bmagx, bmagy
 
-    def track_forwards(self, quad_strengths=None) -> None:
+    def track_forwards(self, quad_strengths: list[float] | None = None) -> None:
         if quad_strengths is None:
             quad_strengths = self.quad_strengths()
         self.navi.go_to_start()
@@ -84,7 +83,7 @@ class BacktrackingLinearMatcher:
         quads = _get_element_instances_from_mlat(self.navi.lat, self.quad_names)
         return quads
 
-    def quad_strengths(self):
+    def quad_strengths(self) -> list[float]:
         return [q.k1 for q in self._quad_instances_from_navi()]
 
     def _set_quads(self, strengths: list[float]) -> None:
@@ -105,7 +104,7 @@ class BacktrackingLinearMatcher:
                                   max_iter=self.MAX_ITER)
         return matched_strengths
 
-    def match(self, n: int = 1, quad_strengths=None) -> list[float]:
+    def match(self, n: int = 1, quad_strengths: list[float] | None = None) -> list[float]:
         if quad_strengths is None:
             quad_strengths = self.initial_match()
         self._set_quads(quad_strengths)
@@ -116,19 +115,19 @@ class BacktrackingLinearMatcher:
 
         return quad_strengths
 
-    def mismatch_summary(self):
+    def mismatch_summary(self) -> MismatchSummary:
         bmagx, bmagy = self.bmags()
         l2loss = self.l2loss()
         return MismatchSummary(bmagx, bmagy, l2loss)
 
-    def rematch(self):
+    def rematch(self) -> list[float]:
         if self.parray1 is None:
             self.track_forwards(quad_strengths)
         quad_strengths = self._backtrack_twiss_and_retrack()
         self._set_quads(quad_strengths)
         return quad_strengths
 
-    def _backtrack_twiss_and_retrack(self) -> tuple[ParticleArray, list[float]]:
+    def _backtrack_twiss_and_retrack(self) -> list[float]:
         # Start at end of lattice section and get twiss
         assert self.parray1 is not None
         twiss1 = self.twiss_function(self.parray1)
@@ -166,7 +165,7 @@ class BacktrackingLinearMatcher:
         return matched_strengths
 
 
-def get_unary_twiss_function(twiss_type, **twissfnkwargs):
+def get_unary_twiss_function(twiss_type, **twissfnkwargs) -> Callable:
     if twiss_type.lower() == "projected":
         twiss_function = partial(get_envelope, **twissfnkwargs)
     elif twiss_type.lower() == "imax":
@@ -186,7 +185,7 @@ def match_with_backtracking(navi: Navigator,
                             quad_names: list[str],
                             maxiter: int = 1,
                             match: str = "projected",
-                            **twissfnkwargs):
+                            **twissfnkwargs) -> tuple[list[float], MismatchSummary]:
     """Match a beam using linear optics and tracking to update the
     linear optics.  Only the horizontal Twiss parameters are
     considered (alpha_x, beta_x, alpha_y, beta_y) from the provided
@@ -204,41 +203,37 @@ def match_with_backtracking(navi: Navigator,
     """
     twiss_function = get_unary_twiss_function(match, **twissfnkwargs)
     matcher = BacktrackingLinearMatcher(navi, parray0, twiss_goal, quad_names, twiss_function)
-    maxiter = 1
     quad_strengths = matcher.match(maxiter)
-    # from IPython import embed; embed()
+
     print(matcher.goal_twiss, matcher.twiss_function(matcher.parray1))
 
     return quad_strengths, matcher.mismatch_summary()
 
 
-def match_injector(fel, parray032, felconfig=None, match="projected"):
-    parray37 = start_sim_to_match_37(fel, parray032, felconfig=felconfig)
-    navi = fel.to_navigator(start=MATCH_37, stop=MATCH_52, felconfig=felconfig)
+# def match_injector(fel, parray032, felconfig=None, match="projected"):
+#     parray37 = start_sim_to_match_37(fel, parray032, felconfig=felconfig)
+#     navi = fel.to_navigator(start=MATCH_37, stop=MATCH_52, felconfig=felconfig)
 
-    match52 = default_match_point_optics().set_index("id").loc["MATCH.52.I1"]
+#     match52 = default_match_point_optics().set_index("id").loc["MATCH.52.I1"]
 
-    goal_twiss = Twiss(**dict(alpha_x=match52.alpha_x,
-                              alpha_y=match52.alpha_y,
-                              beta_x=match52.beta_x,
-                              beta_y=match52.beta_y,
-                              id="MATCH.52.I1"))
+#     goal_twiss = Twiss(**dict(alpha_x=match52.alpha_x,
+#                               alpha_y=match52.alpha_y,
+#                               beta_x=match52.beta_x,
+#                               beta_y=match52.beta_y,
+#                               id="MATCH.52.I1"))
 
-    strengths, mismatch = match_with_backtracking(navi, parray37,
-                                                  goal_twiss,
-                                                  INJECTOR_MATCHING_QUAD_NAMES,
-                                                  maxiter=1,
-                                                  match=match)
+#     strengths, mismatch = match_with_backtracking(navi, parray37,
+#                                                   goal_twiss,
+#                                                   INJECTOR_MATCHING_QUAD_NAMES,
+#                                                   maxiter=1,
+#                                                   match=match)
 
-    if felconfig is None:
-        felconfig = EuXFELSimConfig()
+#     felconfig.update_components(INJECTOR_MATCHING_QUAD_NAMES, strengths, "k1")
 
-    felconfig.update_components(INJECTOR_MATCHING_QUAD_NAMES, strengths, "k1")
-
-    return felconfig, mismatch
+#     return felconfig, mismatch
 
 
-def _get_element_instances_from_mlat(mlat, names):
+def _get_element_instances_from_mlat(mlat: MagneticLattice, names: list[str]) -> list[ElementT]:
     def f(ele):
         return ele.id in names
 

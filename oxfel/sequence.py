@@ -24,7 +24,7 @@ class MachineSequence(Sequence):
         if not set(name_count.values()).issubset({1}):
             raise ValueError("Duplicate names found")
 
-    def __getitem__(self, key: ElementAccessType) -> Union[ElementT, MachineSequence]:
+    def __getitem__(self, key: ElementAccessType) -> ElementT | MachineSequence:
         if isinstance(key, slice):
             start, step, stop = key.start, key.step, key.stop
             if step is not None:
@@ -41,7 +41,7 @@ class MachineSequence(Sequence):
             return self._sequence[index]
 
     def closed_interval(
-        self, start: ElementAccessType = None, stop: ElementAccessType = None
+        self, start: ElementAccessType | None = None, stop: ElementAccessType | None = None
     ) -> MachineSequence:
         """Get interval including the stop element at the end (unlike __getitem__)"""
         if start is None:
@@ -52,6 +52,18 @@ class MachineSequence(Sequence):
         istop = self._normalise_key(stop)
         # Closed interval so add 1:
         istop += 1
+        return self[istart:istop]
+
+    def open_interval(
+        self, start: ElementAccessType = None, stop: ElementAccessType = None
+    ) -> MachineSequence:
+        """Get interval excluding the stop element at the end (like __getitem__)"""
+        if start is None:
+            start = 0
+        istart = self._normalise_key(start)
+        if stop is None:
+            stop = -1
+        istop = self._normalise_key(stop)
         return self[istart:istop]
 
     def __iter__(self):
@@ -129,6 +141,6 @@ class MachineSequence(Sequence):
     def __repr__(self) -> str:
         return f"<MachineSequence: {repr(self._sequence)}>"
 
-    def reverse(self):
+    def reverse(self) -> None:
         """reverse *IN PLACE*"""
         self._sequence.reverse()

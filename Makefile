@@ -59,7 +59,7 @@ test-all: ## run tests on every Python version with tox
 	tox
 
 coverage: ## check code coverage quickly with the default Python
-	coverage run --source oxfel setup.py test
+	coverage run --source oxfel -m pytest tests/test_predefined.py
 	coverage report -m
 	coverage html
 	$(BROWSER) htmlcov/index.html

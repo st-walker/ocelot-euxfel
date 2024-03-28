@@ -39,11 +39,13 @@ TODO
 
 * Automatic CSR bunch length parametrisation
 * Deal with doubled up marker choice (e.g. DUMP.CSR.START).
+* Be consistent with open/closed intervals.
+* Don't allow start/stops to have any thickness only allow with markers.  Unless start is a float...
+* Check SBEND length correction is done correctly (use chords or arcs)
+
 
 Features
 --------
-
-* TODO
 
 Credits
 -------

@@ -1,5 +1,5 @@
 import os
-from importlib_resources import files
+from importlib.resources import files
 from collections import defaultdict
 from pathlib import Path
 from collections.abc import MutableSequence

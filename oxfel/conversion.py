@@ -8,7 +8,7 @@ from collections import deque
 import logging
 from functools import reduce
 import pickle
-from importlib_resources import files
+from importlib.resources import files
 
 import numpy as np
 import ocelot.cpbd.elements as elements
@@ -20,9 +20,9 @@ from ocelot.cpbd.elements.optic_element import OpticElement
 import pandas as pd
 import toml
 
-from .fel_track import EuXFELSimConfig, Linac
+from .xfelt import EuXFELSimConfig, EuXFEL
 from .optics import START_SIM, MATCH_37, MATCH_52, INJECTOR_MATCHING_QUAD_NAMES
-from .longlist import make_default_longlist
+from .longlist import get_default_component_list, XFELComponentList
 from .astra import load_reference_0320_100k_distribution
 
 
@@ -43,6 +43,7 @@ SKIP_GROUP = [
     "CRYO",
     "VACUUM",
     "MOVER",  # "FASTKICK"
+    "PHOTON"
 ]
 
 TRACKING_CONF_NAME = "tracking-matched-conf.toml"
@@ -92,6 +93,9 @@ class MarkerPlacer:
         self.rel_markers = [x for x in new_markers if isinstance(x, RelativeMarker)]
         # self.referenced_markers = {x.reference for x in rel_markers}
 
+    def any_markers_to_attach(self):
+        return (not self.s_markers) and (not self.rel_markers)
+
     def build_element_sequence_with_markers(self, oelement) -> list:
         result = [oelement]
         if not self.rel_markers:
@@ -132,17 +136,15 @@ class MarkerPlacer:
 class LongListConverter:
     ROUND_NDIGITS = 6  # For rounding to make drifts and other lenghts look nice.
 
-    def __init__(self, fname: os.PathLike, extra_properties=None):
-        self.df = pd.read_excel(fname, sheet_name="LONGLIST", skiprows=[1])
-        # So that the columns are well formed python names...
-        self.df = self.df.rename(columns={"E1/LAG": "E1_LAG", "E2/FREQ": "E2_FREQ"})
+    def __init__(self, clist: XFELComponentList, extra_properties=None):
+        self.clist = clist
         self.extra_properties = extra_properties if extra_properties else {}
         # # to have unique drift names...
         self.drift_counter = 0
 
     @property
     def twiss0(self) -> Twiss:
-        start = self.df.iloc[0]
+        start = self.clist.longlist.iloc[0]
         t = Twiss()
         t.beta_x = start.BETX
         t.beta_y = start.BETY
@@ -162,15 +164,47 @@ class LongListConverter:
         return result
 
     def _filter_on_bad_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        # We skip these types, unless they have nonzero length, then we have to keep them
         t_mask = [df.TYPE == t for t in SKIP_TYPE]
         c_mask = [df.CLASS == c for c in SKIP_CLASS]
         g_mask = [df.GROUP == g for g in SKIP_GROUP]
 
-        full_bad_mask = reduce(np.logical_or, [*t_mask, *c_mask, *g_mask])
+        bad_element_types_mask = reduce(np.logical_or, [*t_mask, *c_mask, *g_mask])
+
+        zero_length_mask = df.LENGTH == 0
+        full_bad_mask = bad_element_types_mask & zero_length_mask
+        skipped_elements = df[full_bad_mask]
+
+        if skipped_elements.LENGTH.abs().sum() > 0:
+            raise ValueError("Non-zero length elements are to be skipped")
 
         return df[~full_bad_mask]
 
+    def _shift_overlapping_correctors(self, df: pd.DataFrame) -> pd.DataFrame:
+        thick_elements = df[df.LENGTH != 0]
+        unique_s, indices, counts = np.unique(thick_elements.S,
+                                              return_counts=True,
+                                              return_index=True)
+        rows_with_dupe_s = thick_elements.iloc[indices[counts > 1]]
+
+        for row in rows_with_dupe_s.itertuples():
+            dupes = df.loc[thick_elements[thick_elements.S == row.S].index]
+            assert len(dupes) == 2
+            second_dupe_index = dupes.iloc[1].name
+            df.loc[second_dupe_index, "S"] += df.loc[second_dupe_index].LENGTH * 0.5
+
+
+        return df
+
+
     def _filter_bad_entries(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Filter bad/nonsensical columns from the DataFrame,
+        e.g.:
+         * elements with negative S
+         * elements with irrelevant types (that also have no length)
+         * Markers that are inside other elements
+
+        """
         neg_s = df[df.S < 0]
         for tup in neg_s.itertuples():
             LOG.warning(f"Dropping element with negative S: {tup.Index=}, {tup.NAME1}")
@@ -191,18 +225,19 @@ class LongListConverter:
                     f"Dropping bad row inside other element: {tup.Index=}, {tup.NAME1}"
                 )
                 bad_rows.append(tup)
+                assert tup.LENGTH == 0.0
 
         bad_row_indices = [x.Index for x in bad_rows]
-        return df.drop(index=bad_row_indices)
+        df_no_bad_indices = df.drop(index=bad_row_indices)
+        return self._shift_overlapping_correctors(df_no_bad_indices)
 
     def convert_section(self, pysec: LatticeSection) -> list[ElementT]:
-        # Do the slicing.
-        section_df = self.df.set_index("NAME1").loc[
-            pysec.start_name1 : pysec.stop_name1
-        ]
+        # Do the slicing of the longlist and extract the subsections we want based on the names
+        df = self.clist.longlist
+        section_df = df.set_index("NAME1").loc[pysec.start_name1:pysec.stop_name1]
         section_df = section_df.reset_index()  # put NAME1 back as a column again.
-        # section_df = section_df[section_df.S >= 0] # Skip negative S elements...
 
+        # Get rid of bad elements
         section_df = self._filter_bad_entries(section_df)
 
         # to be returned:
@@ -215,14 +250,20 @@ class LongListConverter:
         for row in section_df.itertuples():
             # Convert to OCELOT element
             oelement = self.dispatch(row)
-            # Can't use row.LENGTH because it's wrong for example in UNDU.
-            # S Is the same/correct though.
-            oelement_start_s = self._round(row.S - oelement.l * 0.5)
+            # Can't use row.LENGTH because it's wrong for example in
+            # UNDU.  S Is the same/correct though.  Indeed it has to
+            # be because the longlist includes no drifts, so figuring
+            # out the structure of the lattice only using lengths is
+            # not possible.
+            oelement_start_s = row.S - oelement.l * 0.5
+
             oelement_with_markers = self._attach_markers_to_element(
                 running_s_end, oelement_start_s, oelement, marker_placer
             )
+
             sequence.extend(oelement_with_markers)
-            running_s_end += sum([x.l for x in oelement_with_markers])
+            running_s_end = row.S + oelement.l * 0.5 
+            # running_s_end += sum([x.l for x in oelement_with_markers])
 
         return sequence
 
@@ -230,7 +271,11 @@ class LongListConverter:
         self, s_start: float, s_stop: float, oelement, marker_placer: MarkerPlacer
     ) -> list:
         """s_start, s_stop define region where were look to try to insert markers"""
-        assert s_stop >= s_start
+        #XXX: This function is also responsible for adding drifts to the sequence!
+        try:
+            assert np.isclose(s_stop, s_start) or (s_stop > s_start)
+        except:
+            import ipdb; ipdb.set_trace()
 
         # Attach any markers either side of the element (based on name)
         oelement_with_markers = marker_placer.build_element_sequence_with_markers(
@@ -284,7 +329,7 @@ class LongListConverter:
         except AttributeError:
             raise UnknownLongListElement(
                 "Unknown element to be converted:"
-                f"{row.NAME1=}, {row.GROUP=}, {row.CLASS=}, {row.TYPE=}"
+                f"{row.NAME1=}, {row.GROUP=}, {row.CLASS=}, {row.TYPE=}, {row.LENGTH=}"
             )
 
     def convert_magnet(
@@ -296,6 +341,7 @@ class LongListConverter:
         elements.SBend,
         elements.Solenoid,
         elements.Sextupole,
+        elements.Octupole
     ]:
         common_kw = {
             "eid": tup.NAME1,
@@ -327,6 +373,8 @@ class LongListConverter:
             return elements.RBend(
                 angle=tup.STRENGTH, e1=tup.E1_LAG, e2=tup.E2_FREQ, **common_kw
             )
+        elif tup.CLASS == "OCTU":
+            return elements.Octupole(k3=tup.STRENGTH / tup.LENGTH, **common_kw)
 
         raise UnknownLongListElement(tup)
 
@@ -340,6 +388,9 @@ class LongListConverter:
 
     def convert_undu(self, row: AnyTupT) -> elements.Undulator:
         assert row.GROUP == "UNDU"
+
+        if row.CLASS == "PHASESHIFTER":
+            return self.convert_phaseshifter(row)
         assert row.CLASS == "UNDULATOR"
         # Extract sequences of numbers from the TYPE
         type_numbers = re.findall(r"\d+", row.TYPE)
@@ -351,6 +402,22 @@ class LongListConverter:
         # class itself.
         undulator.l = undulator.lperiod * undulator.nperiods
         return undulator
+
+    def convert_phaseshifter(self, row: AnyTupT) -> elements.Drift:
+        """Phase shifters are converted to drifts (at least for now)"""
+        assert row.GROUP == "UNDU"
+        assert row.CLASS == "PHASESHIFTER"
+        return elements.Drift(l=row.LENGTH, eid=row.NAME1)
+
+    def convert_cryo(self, row: AnyTupT) -> elements.Drift:
+        assert row.GROUP == "CRYO"
+        assert row.CLASS == "CRYO"
+        return elements.Drift(l=row.LENGTH, eid=row.NAME1)
+
+    def convert_vacuum(self, row: AnyTupT) -> elements.Drift:
+        assert row.GROUP == "VACUUM"
+        assert row.CLASS in {"VAC", "ECOL", "PLACEH", "ABSORBER"}, (row.CLASS, row.LENGTH)
+        return elements.Drift(l=row.LENGTH, eid=row.NAME1)
 
     def convert_cavity(self, row: AnyTupT) -> Union[elements.Cavity, elements.TDCavity]:
         assert row.GROUP == "CAVITY"
@@ -441,9 +508,9 @@ def longlist_to_ocelot(
 
 def generate_real_i1_matched_config(i1_sequence, twiss0, realconfig):
     # i1_dummy_section = FELSection(i1_sequence)
-    just_injector = Linac(i1_sequence, twiss0, felconfig=realconfig)
-    match_52_twiss_constraint = make_default_longlist().get_optics_constraint(MATCH_52)
-    real_matched_conf = just_injector.match(
+    just_injector = EuXFEL(i1_sequence, twiss0, felconfig=realconfig)
+    match_52_twiss_constraint = get_default_component_list().get_optics_constraint(MATCH_52)
+    real_matched_conf = just_injector.match_twiss(
         just_injector.twiss0,
         elements=INJECTOR_MATCHING_QUAD_NAMES,
         constraints=match_52_twiss_constraint,
@@ -545,8 +612,8 @@ def match_real_injector():
     parray37 = fel.track(parray032, start="start_ocelot", stop=MATCH_37)
     twiss37 = get_envelope(parray37)
 
-    ll = make_default_longlist()
-    match_52_twiss_constraint = ll.get_optics_constraint("MATCH.52.I1")
+    cl = get_default_component_list()
+    match_52_twiss_constraint = cl.get_optics_constraint("MATCH.52.I1")
 
     linear_matched_conf = fel.match(
         twiss37,
@@ -578,7 +645,7 @@ def match_real_injector():
         print(f"Wrote {f.name}")
 
 
-def update_bunch_size_data(name, fel: Linac, parray032: ParticleArray):
+def update_bunch_size_data(name, fel: EuXFEL, parray032: ParticleArray):
     _, twiss = fel.track_optics(parray032, start=START_SIM)
     outdir = files("oxfel.accelerator.lattice")
     fpath = get_bunchsizerc_path(name)
