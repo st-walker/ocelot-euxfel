@@ -42,6 +42,7 @@ TODO
 * Be consistent with open/closed intervals.
 * Don't allow start/stops to have any thickness only allow with markers.  Unless start is a float...
 * Check SBEND length correction is done correctly (use chords or arcs)
+* Check physics processes.
 
 
 Features

@@ -1,12 +1,13 @@
 [tool]
 [tool.poetry]
 name = "oxfel"
-version = "0.3.1"
+version = "0.3.2"
 homepage = "https://github.com/st-walker/esmesim"
 description = "The official UNOFFICIAL model of the EuXFEL in OCELOT"
 authors = ["Stuart Walker <stuart.walker@desy.de>"]
 readme = "README.rst"
 license =  "MIT"
+
 classifiers=[
     'Development Status :: 2 - Pre-Alpha',
     'Intended Audience :: Developers',
@@ -15,10 +16,23 @@ classifiers=[
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.9',
 ]
-packages = [
-    { include = "oxfel" },
-    { include = "tests", format = "sdist" },
-]
+
+include = ["oxfel/accelerator/lattice/conversion-config.toml",
+	   "oxfel/accelerator/lattice/real-linear-config.toml",
+	   "oxfel/accelerator/lattice/real-matched-conf.toml",
+	   "oxfel/accelerator/lattice/tracking-matched-conf.toml",
+
+	   "oxfel/wakes/rf/wake_table_A1.dat",
+	   "oxfel/wakes/rf/wake_table_AH1.dat",
+	   "oxfel/wakes/rf/wake_table_TDS1.dat",
+
+ 	   "oxfel/processes.yaml",
+	   "oxfel/wakes/rf/*.dat",
+
+	   "oxfel/astra/euxfel-injector-100k.0320.001.gz",
+	   "oxfel/astra/euxfel-injector-10k.0320.001.gz",
+
+	  "oxfel/accelerator/lattice/component_list_2023.07.01.xls"]
 
 
 [tool.poetry.dependencies]
@@ -32,6 +46,7 @@ pyyaml = "^6.0.1"
 click = "^8.1.7"
 xlrd = "^2.0.1"
 ocelot = {git = "https://github.com/ocelot-collab/ocelot.git", rev = "dev"}
+
 
 
 [tool.poetry.scripts]
