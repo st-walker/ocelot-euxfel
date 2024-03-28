@@ -22,11 +22,11 @@ packages = [
 
 
 [tool.poetry.dependencies]
-python = ">=3.9.7,<4.0"
+python = ">=3.10.11,<4.0"
 matplotlib = "^3.7.1"
 pandas = "^2.0.2"
 toml = "^0.10.2"
-numpy = ">=1.24.3"
+numpy = ">=1.24.3,<2.0"
 latdraw = "^0.1.1a0"
 pyyaml = "^6.0.1"
 click = "^8.1.7"
@@ -37,8 +37,11 @@ ocelot = {git = "https://github.com/ocelot-collab/ocelot.git", rev = "dev"}
 [tool.poetry.scripts]
 oxfel = 'oxfel.cli:main'
 
+[tool.poetry.group.dev]
+optional = true
 [tool.poetry.group.dev.dependencies]
-poetry-bumpversion = {version = "^0.3.2", optional = true}
+poetry-bumpversion = "*"
+ipython = "*"
 
 [tool.poetry_bumpversion.file."oxfel/__init__.py"]
 # Duplicate the line above to add more files to be bumped

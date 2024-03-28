@@ -35,11 +35,19 @@ MATCH_428: str = "MATCH.428.B2"
 
 
 FIXED_MATCH_POINTS: list[str] = [
+    # In front of TDS must be fixed
     "MATCH.52.I1",
+    # In front of dogleg must be fixed
     "MATCH.73.I1",
+    # ??? Why must this be fixed ???
     "MATCH.104.I1",
+    # In front of BC1 TDS must be fixed
     "MATCH.218.B1",
     "MATCH.446.B2",
+    # Entrance to L3 must be fixed
+    "MATCH.525.L3",
+    # Entrance to collimation dogleg must be fixed
+    "MATCH.1673.CL"
 ]
 
 ALL_INTERESTING_MATCH_POINTS = FIXED_MATCH_POINTS + [MATCH_428]
@@ -176,7 +184,8 @@ def get_match_point(twiss_df: pd.DataFrame, additional_names: Optional[list[str]
 
     twiss_match["bmag_x"] = bmag_x
     twiss_match["bmag_y"] = bmag_y
-    return twiss_match
+
+    return twiss_match.sort_values("s")
 
 
 def read_mad8(fname: os.PathLike) -> pd.DataFrame:
