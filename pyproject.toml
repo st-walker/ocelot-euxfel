@@ -1,7 +1,7 @@
 [tool]
 [tool.poetry]
 name = "oxfel"
-version = "0.3.0"
+version = "0.3.1"
 homepage = "https://github.com/st-walker/esmesim"
 description = "The official UNOFFICIAL model of the EuXFEL in OCELOT"
 authors = ["Stuart Walker <stuart.walker@desy.de>"]
