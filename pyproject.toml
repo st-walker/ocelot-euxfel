@@ -1,7 +1,7 @@
 [tool]
 [tool.poetry]
 name = "oxfel"
-version = "0.3.2"
+version = "0.3.3"
 homepage = "https://github.com/st-walker/esmesim"
 description = "The official UNOFFICIAL model of the EuXFEL in OCELOT"
 authors = ["Stuart Walker <stuart.walker@desy.de>"]
@@ -27,12 +27,11 @@ include = ["oxfel/accelerator/lattice/conversion-config.toml",
 	   "oxfel/wakes/rf/wake_table_TDS1.dat",
 
  	   "oxfel/processes.yaml",
-	   "oxfel/wakes/rf/*.dat",
 
 	   "oxfel/astra/euxfel-injector-100k.0320.001.gz",
 	   "oxfel/astra/euxfel-injector-10k.0320.001.gz",
 
-	  "oxfel/accelerator/lattice/component_list_2023.07.01.xls"]
+           "oxfel/accelerator/lattice/component_list_2023.07.01.xls"]
 
 
 [tool.poetry.dependencies]
