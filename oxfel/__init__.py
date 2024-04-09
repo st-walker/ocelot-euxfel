@@ -2,7 +2,7 @@
 
 __author__ = """Stuart Walker"""
 __email__ = "stuart.walker@desy.de"
-__version__ = "0.3.5"
+__version__ = "0.4.0"
 
 
 from .accelerator import lattice# , sections
