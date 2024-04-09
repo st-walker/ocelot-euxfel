@@ -15,7 +15,7 @@ from .wakes import find_wake_file
 from .sequence import MachineSequence
 
 
-DEFAULT_PROCESSES = files("oxfel.processes") / "processes.yaml"
+DEFAULT_PROCESSES = files("oxfel") / "processes.yaml"
 LOG = logging.getLogger(__name__)
 
 
