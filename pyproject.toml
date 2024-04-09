@@ -1,7 +1,7 @@
 [tool]
 [tool.poetry]
 name = "oxfel"
-version = "0.3.4"
+version = "0.3.5"
 homepage = "https://github.com/st-walker/esmesim"
 description = "The official UNOFFICIAL model of the EuXFEL in OCELOT"
 authors = ["Stuart Walker <stuart.walker@desy.de>"]
@@ -16,6 +16,13 @@ classifiers=[
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.9',
 ]
+
+# Exclude lots of data files, and then only below include certain files explicitly.
+exclude = ["**/*.dat",
+	   "**/*.m",
+	   "**/*.txt",
+	   "oxfel/astra/*"]
+
 
 include = ["oxfel/accelerator/lattice/conversion-config.toml",
 	   "oxfel/accelerator/lattice/real-linear-config.toml",
