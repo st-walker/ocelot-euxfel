@@ -1,7 +1,7 @@
 [tool]
 [tool.poetry]
 name = "oxfel"
-version = "0.4.0"
+version = "0.4.1"
 homepage = "https://github.com/st-walker/esmesim"
 description = "The official UNOFFICIAL model of the EuXFEL in OCELOT"
 authors = ["Stuart Walker <stuart.walker@desy.de>"]
@@ -21,7 +21,12 @@ classifiers=[
 exclude = ["**/*.dat",
 	   "**/*.m",
 	   "**/*.txt",
-	   "oxfel/astra/*"]
+	   "**/*.dat",
+	   "**/*.ini",
+	   "oxfel/astra/NORRAN",
+	   "oxfel/astra/Main_and_Buck_sym2.prn",
+	   "**/.ini"
+	   ]
 
 
 include = ["oxfel/accelerator/lattice/conversion-config.toml",
