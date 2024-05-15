@@ -1,7 +1,7 @@
 [tool]
 [tool.poetry]
 name = "oxfel"
-version = "0.4.1"
+version = "0.5.0"
 homepage = "https://github.com/st-walker/esmesim"
 description = "The official UNOFFICIAL model of the EuXFEL in OCELOT"
 authors = ["Stuart Walker <stuart.walker@desy.de>"]
@@ -18,15 +18,15 @@ classifiers=[
 ]
 
 # Exclude lots of data files, and then only below include certain files explicitly.
-exclude = ["**/*.dat",
-	   "**/*.m",
-	   "**/*.txt",
-	   "**/*.dat",
-	   "**/*.ini",
-	   "oxfel/astra/NORRAN",
-	   "oxfel/astra/Main_and_Buck_sym2.prn",
-	   "**/.ini"
-	   ]
+# exclude = ["**/*.dat",
+# 	   "**/*.m",
+# 	   "**/*.txt",
+# 	   "**/*.dat",
+# 	   "**/*.ini",
+# 	   "oxfel/astra/NORRAN",
+# 	   "oxfel/astra/Main_and_Buck_sym2.prn",
+# 	   "**/.ini"
+# 	   ]
 
 
 include = ["oxfel/accelerator/lattice/conversion-config.toml",
@@ -43,7 +43,9 @@ include = ["oxfel/accelerator/lattice/conversion-config.toml",
 	   "oxfel/astra/euxfel-injector-100k.0320.001.gz",
 	   "oxfel/astra/euxfel-injector-10k.0320.001.gz",
 
-           "oxfel/accelerator/lattice/component_list_2023.07.01.xls"]
+           "oxfel/accelerator/lattice/component_list_2023.07.01.xls",
+
+	   "py.typed"]
 
 
 [tool.poetry.dependencies]
